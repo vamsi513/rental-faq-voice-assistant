@@ -1,0 +1,52 @@
+{
+  "name": "Rental prototype - maintenance request",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "maintenance",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1111111-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-180, 0],
+      "webhookId": "a1111111-1111-4111-8111-111111111111",
+      "notes": "Use the PRODUCTION url. The test url only accepts one request while the editor is listening."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate the shared credential and the required fields, then mint a demo ticket.\n// The secret is read from an n8n environment variable so it is never in this export.\nconst expected = $env.PROTOTYPE_SECRET || '';\nconst headers = $input.first().json.headers || {};\nconst provided = headers['x-prototype-secret'] || headers['X-Prototype-Secret'] || '';\n\nif (expected && provided !== expected) {\n  return [{ json: { _ok: false, _code: 401, error: 'bad or missing shared secret' } }];\n}\n\nconst body = $input.first().json.body || {};\nconst required = ['request_id', 'call_id', 'unit', 'issue', 'source'];\nconst missing = required.filter((f) => !body[f]);\nif (missing.length) {\n  return [{ json: { _ok: false, _code: 400, error: 'missing fields: ' + missing.join(', ') } }];\n}\n\n// Deterministic from request_id, so the same request maps to the same ticket if the\n// backend ever re-sends it. This is a demo ticket: no person is notified.\nlet hash = 0;\nfor (const ch of String(body.request_id)) {\n  hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;\n}\nconst ticket = 'DEMO-' + hash.toString(36).toUpperCase().slice(0, 6).padStart(6, '0');\n\nreturn [{ json: {\n  _ok: true,\n  _code: 200,\n  status: 'accepted',\n  ticket_id: ticket,\n  request_id: body.request_id,\n  received: { unit: body.unit, issue: body.issue, call_id: body.call_id, source: body.source }\n} }];"
+      },
+      "id": "b2222222-2222-4222-8222-222222222222",
+      "name": "Validate and build ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json._ok ? JSON.stringify({ status: $json.status, ticket_id: $json.ticket_id, request_id: $json.request_id }) : JSON.stringify({ status: 'rejected', error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json._code }}"
+        }
+      },
+      "id": "c3333333-3333-4333-8333-333333333333",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate and build ticket", "type": "main", "index": 0 }]] },
+    "Validate and build ticket": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "rental-voice-prototype" },
+  "tags": []
+}

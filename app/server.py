@@ -1,6 +1,9 @@
 """FastAPI server.
 
-The Vapi integration point is POST /chat/completions. Vapi's "Custom LLM" provider
+The Vapi integration point is POST /chat/completions.
+
+NOTE on "OpenAI-compatible": this is the OpenAI Chat Completions wire format -- the
+request/response JSON shape -- not an OpenAPI specification. The two are unrelated. Vapi's "Custom LLM" provider
 speaks the OpenAI chat-completions protocol: it POSTs an OpenAI-shaped body (plus a
 `call` object carrying the call id) and expects either a JSON completion or an SSE
 stream of `chat.completion.chunk` objects terminated by `data: [DONE]`. Replying on
@@ -33,7 +36,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.config import GREETING, ROOT, settings
+from app.config import GREETING, PROPERTY_NAME, PROTOTYPE_NOTICE, RENTAL_CORPUS_DIR, ROOT, settings
 from app.graph import build_graph, new_turn_id
 from app.sessions import SessionRegistry
 
@@ -43,7 +46,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("agent.server")
 
-app = FastAPI(title="Resume voice agent", version="1.0.0")
+app = FastAPI(title="Rental FAQ voice assistant (prototype)", version="2.0.0")
 
 # Populated in the lifespan handler.
 STATE: dict[str, Any] = {"graph": None, "retriever": None, "registry": None, "ready": False}
@@ -57,11 +60,12 @@ MAX_DEBUG_CALLS = 50
 # --------------------------------------------------------------------------
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI):
+    import httpx
     from langchain_openai import ChatOpenAI
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     from app.embeddings import CachedEmbedder, HashingEmbedder, OpenAIEmbedder
-    from app.retriever import ResumeRetriever
+    from app.retriever import PolicyRetriever
 
     if settings.openai_api_key:
         embedder = CachedEmbedder(
@@ -79,8 +83,8 @@ async def lifespan(_: FastAPI):
         log.warning("OPENAI_API_KEY missing -- offline stand-in embedder, no generation")
         embedder, llm = HashingEmbedder(), None
 
-    retriever = ResumeRetriever.from_resume(
-        ROOT / "data/resume.md", embedder,
+    retriever = PolicyRetriever.from_corpus(
+        RENTAL_CORPUS_DIR, embedder,
         hybrid=settings.hybrid_retrieval, dense_weight=settings.dense_weight,
     )
     registry = SessionRegistry(idle_seconds=settings.session_idle_seconds)
@@ -92,8 +96,12 @@ async def lifespan(_: FastAPI):
             AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
         )
         await checkpointer.setup()
+        # One shared client: connection reuse matters when a voice caller is waiting.
+        http_client = await stack.enter_async_context(
+            httpx.AsyncClient(timeout=settings.n8n_timeout_seconds)
+        )
         STATE.update(
-            graph=build_graph(retriever, llm, settings, checkpointer) if llm else None,
+            graph=build_graph(retriever, llm, settings, checkpointer, http_client) if llm else None,
             retriever=retriever,
             registry=registry,
             checkpointer=checkpointer,
@@ -101,8 +109,9 @@ async def lifespan(_: FastAPI):
         )
         sweeper = asyncio.create_task(_sweep_loop(registry))
         log.info(
-            "ready: %d chunks, embedder=%s, model=%s, checkpoints=%s",
-            len(retriever.chunks), embedder.name, settings.chat_model, settings.checkpoint_db,
+            "ready: %d chunks from %s, embedder=%s, model=%s, n8n=%s",
+            len(retriever.chunks), RENTAL_CORPUS_DIR.name, embedder.name,
+            settings.chat_model, "configured" if settings.n8n_configured else "NOT configured",
         )
         try:
             yield
@@ -182,6 +191,11 @@ async def run_turn(call_id: str, question: str, position: int | None = None) -> 
             "top_dense_score": round(result.get("top_dense_score", 0.0), 4),
             "evidence": result.get("evidence", []),
             "answer": answer,
+            # Status only -- never the webhook URL or the shared secret.
+            "maintenance": {
+                k: v for k, v in (result.get("maintenance") or {}).items()
+                if k in ("status", "request_id", "unit", "issue", "ticket_id", "error")
+            },
             "latency_seconds": round(elapsed, 3),
             "history_messages": len(result.get("messages", [])),
             "completed_at": time.time(),
@@ -233,10 +247,12 @@ def _resolve_call_id(body: dict, request: Request) -> str:
 def _sse_chunks(answer: str, model: str) -> Any:
     """OpenAI chat.completion.chunk stream, which is what Vapi consumes.
 
-    The answer is already complete, so it is emitted as one content chunk plus a stop
-    chunk. Token-by-token streaming would not help here: Vapi waits for enough text to
-    start speaking, and the graph cannot stream anyway because the route (answer vs
-    refusal) is only known once generation finishes.
+    HONEST DESCRIPTION: this is NOT token-by-token streaming. The graph produces one
+    finished answer, which is emitted as a single content chunk followed by a stop
+    chunk and `[DONE]`. The framing is SSE and Vapi consumes it happily, but no tokens
+    arrive incrementally. Real streaming would not help here anyway -- the route
+    (answer, refusal, or maintenance confirmation) is only known once the node
+    finishes, so there is nothing to stream before then.
     """
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
@@ -364,6 +380,11 @@ async def health() -> dict:
         "embedding_dim": retriever.embedder.dim if retriever else None,
         "chat_model": settings.chat_model,
         "checkpointer": "AsyncSqliteSaver",
+        "property": PROPERTY_NAME,
+        "notice": PROTOTYPE_NOTICE,
+        # Whether the maintenance workflow can reach n8n at all. The URL itself is not
+        # published -- only whether one is set.
+        "n8n_configured": settings.n8n_configured,
     }
 
 
@@ -381,6 +402,8 @@ async def debug_sessions(_: None = Depends(require_secret)) -> dict:
             "top_k": settings.top_k,
             "max_history_turns": settings.max_history_turns,
             "session_idle_seconds": settings.session_idle_seconds,
+            "n8n_configured": settings.n8n_configured,
+            "n8n_timeout_seconds": settings.n8n_timeout_seconds,
             # Name only -- the full path would expose the operator's home directory.
             "checkpoint_db": Path(settings.checkpoint_db).name,
         },

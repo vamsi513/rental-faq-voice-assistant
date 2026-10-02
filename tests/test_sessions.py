@@ -28,18 +28,18 @@ async def test_separate_calls_get_separate_threads():
 async def test_fingerprint_is_stable_for_a_retry_and_changes_with_position():
     registry = SessionRegistry()
     # A Vapi retry: same call, same text, same caller-side position.
-    retry = registry.fingerprint("c", "What is AgentIQ?", 0)
-    assert registry.fingerprint("c", "What is AgentIQ?", 0) == retry
+    retry = registry.fingerprint("c", "What is the pet fee?", 0)
+    assert registry.fingerprint("c", "What is the pet fee?", 0) == retry
     # Same question later in the call is a genuine new turn.
-    assert registry.fingerprint("c", "What is AgentIQ?", 2) != retry
+    assert registry.fingerprint("c", "What is the pet fee?", 2) != retry
     # Same question on another call is a different turn.
-    assert registry.fingerprint("other", "What is AgentIQ?", 0) != retry
+    assert registry.fingerprint("other", "What is the pet fee?", 0) != retry
 
 
 async def test_whitespace_and_case_do_not_defeat_the_duplicate_check():
     registry = SessionRegistry()
-    assert registry.fingerprint("c", "What  is   AgentIQ?", 0) == \
-           registry.fingerprint("c", "what is agentiq?", 0)
+    assert registry.fingerprint("c", "What  is   the pet fee?", 0) == \
+           registry.fingerprint("c", "what is the pet fee?", 0)
 
 
 async def test_duplicate_is_replayed_not_recomputed():

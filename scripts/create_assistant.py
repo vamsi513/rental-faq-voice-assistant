@@ -30,7 +30,7 @@ API = "https://api.vapi.ai/assistant"
 
 def build(url: str, secret: str, voice_provider: str = "vapi", voice_id: str = "Elliot") -> dict:
     config: dict = {
-        "name": "Vamsi portfolio assistant",
+        "name": "Maple Court sample FAQ assistant (prototype)",
         # Spoken before the caller says anything. Vapi says this itself, so it costs no
         # round trip to our server.
         "firstMessage": GREETING,

@@ -1,422 +1,586 @@
 {
-  "n_answerable": 36,
-  "n_unanswerable": 5,
+  "n_answerable": 51,
+  "n_unanswerable": 6,
   "hit_at": {
-    "@1": 0.8889,
-    "@3": 0.9444,
-    "@5": 1.0
+    "@1": 0.902,
+    "@3": 0.9804,
+    "@5": 0.9804
   },
   "recall_at": {
-    "@1": 0.8472,
-    "@3": 0.9444,
-    "@5": 0.9907
+    "@1": 0.8627,
+    "@3": 0.9804,
+    "@5": 0.9804
   },
   "n_multi_chunk": 4,
-  "mrr": 0.9306,
-  "mean_top1_answerable": 0.4059,
-  "mean_top1_unanswerable": 0.1183,
-  "min_top1_answerable": 0.1784,
-  "max_top1_unanswerable": 0.173,
+  "mrr": 0.9379,
+  "mean_top1_answerable": 0.4816,
+  "mean_top1_unanswerable": 0.1557,
+  "min_top1_answerable": 0.2715,
+  "max_top1_unanswerable": 0.3545,
   "per_question": [
     {
-      "id": "edu-1",
-      "category": "education",
-      "question": "Where did he go to school?",
+      "id": "hours-1",
+      "category": "hours",
+      "question": "What are the office hours?",
       "first_relevant_rank": 1,
-      "top1": "education--master-of-science--1",
-      "top1_dense": 0.2892,
+      "top1": "contact-and-hours--leasing-office-hours--1",
+      "top1_dense": 0.4882,
       "expected": [
-        "education--master-of-science--1"
+        "contact-and-hours--leasing-office-hours--1"
       ]
     },
     {
-      "id": "edu-2",
-      "category": "education",
-      "question": "What degree does he have?",
-      "first_relevant_rank": 1,
-      "top1": "education--master-of-science--1",
-      "top1_dense": 0.4111,
-      "expected": [
-        "education--master-of-science--1"
-      ]
-    },
-    {
-      "id": "edu-3",
+      "id": "hours-2",
       "category": "paraphrase",
-      "question": "Tell me about his academic background.",
+      "question": "When is the leasing office open on Saturday?",
+      "first_relevant_rank": 1,
+      "top1": "contact-and-hours--leasing-office-hours--1",
+      "top1_dense": 0.5586,
+      "expected": [
+        "contact-and-hours--leasing-office-hours--1"
+      ]
+    },
+    {
+      "id": "contact-1",
+      "category": "contact",
+      "question": "How do I contact the leasing office?",
+      "first_relevant_rank": 1,
+      "top1": "contact-and-hours--how-to-reach-the-office--1",
+      "top1_dense": 0.5822,
+      "expected": [
+        "contact-and-hours--how-to-reach-the-office--1"
+      ]
+    },
+    {
+      "id": "emerg-1",
+      "category": "emergency",
+      "question": "Who do I call for an emergency at night?",
+      "first_relevant_rank": 1,
+      "top1": "maintenance--emergency-maintenance--1",
+      "top1_dense": 0.5051,
+      "expected": [
+        "contact-and-hours--emergency-contact--1",
+        "maintenance--emergency-maintenance--1"
+      ]
+    },
+    {
+      "id": "emerg-2",
+      "category": "paraphrase",
+      "question": "What counts as a maintenance emergency?",
+      "first_relevant_rank": 1,
+      "top1": "maintenance--emergency-maintenance--1",
+      "top1_dense": 0.5478,
+      "expected": [
+        "contact-and-hours--emergency-contact--1",
+        "maintenance--emergency-maintenance--1"
+      ]
+    },
+    {
+      "id": "app-1",
+      "category": "application",
+      "question": "How do I apply for an apartment?",
+      "first_relevant_rank": 1,
+      "top1": "application--application-process--1",
+      "top1_dense": 0.5628,
+      "expected": [
+        "application--application-process--1"
+      ]
+    },
+    {
+      "id": "app-2",
+      "category": "application",
+      "question": "What documents do I need to apply?",
+      "first_relevant_rank": 1,
+      "top1": "application--required-documents--1",
+      "top1_dense": 0.5419,
+      "expected": [
+        "application--required-documents--1"
+      ]
+    },
+    {
+      "id": "app-3",
+      "category": "application",
+      "question": "How much is the application fee?",
       "first_relevant_rank": 2,
-      "top1": "technical-skills--1",
-      "top1_dense": 0.2643,
+      "top1": "rent-and-fees--one-time-and-situational-fees--1",
+      "top1_dense": 0.4855,
       "expected": [
-        "education--master-of-science--1"
+        "application--application-process--1"
       ]
     },
     {
-      "id": "edu-4",
-      "category": "education",
-      "question": "What was his GPA?",
+      "id": "app-4",
+      "category": "application",
+      "question": "What income do I need to qualify?",
       "first_relevant_rank": 1,
-      "top1": "education--master-of-science--1",
-      "top1_dense": 0.3828,
+      "top1": "application--screening-criteria--1",
+      "top1_dense": 0.4205,
       "expected": [
-        "education--master-of-science--1"
+        "application--screening-criteria--1"
       ]
     },
     {
-      "id": "edu-5",
+      "id": "app-5",
       "category": "paraphrase",
-      "question": "Which university is he at and what did he study there?",
+      "question": "Can someone co-sign for me?",
       "first_relevant_rank": 1,
-      "top1": "education--master-of-science--1",
-      "top1_dense": 0.3876,
+      "top1": "application--screening-criteria--1",
+      "top1_dense": 0.3609,
       "expected": [
-        "education--master-of-science--1"
+        "application--screening-criteria--1"
       ]
     },
     {
-      "id": "edu-6",
-      "category": "education",
-      "question": "Was he a teaching assistant?",
+      "id": "rent-1",
+      "category": "rent",
+      "question": "How much is a two bedroom?",
       "first_relevant_rank": 1,
-      "top1": "education--master-of-science--1",
-      "top1_dense": 0.3848,
+      "top1": "rent-and-fees--monthly-rent-by-floor-plan--1",
+      "top1_dense": 0.4618,
       "expected": [
-        "education--master-of-science--1"
+        "rent-and-fees--monthly-rent-by-floor-plan--1"
       ]
     },
     {
-      "id": "proj-1",
-      "category": "project",
-      "question": "What is AgentIQ?",
+      "id": "rent-2",
+      "category": "rent",
+      "question": "What does a studio cost?",
       "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.525,
+      "top1": "rent-and-fees--monthly-rent-by-floor-plan--1",
+      "top1_dense": 0.3774,
       "expected": [
-        "projects--agentiq--1"
+        "rent-and-fees--monthly-rent-by-floor-plan--1"
       ]
     },
     {
-      "id": "proj-2",
-      "category": "project",
-      "question": "Tell me about IncidentMemory AI.",
+      "id": "rent-3",
+      "category": "rent",
+      "question": "When is rent due?",
       "first_relevant_rank": 1,
-      "top1": "projects--incidentmemory-ai--1",
-      "top1_dense": 0.555,
+      "top1": "rent-and-fees--when-rent-is-due--1",
+      "top1_dense": 0.5451,
       "expected": [
-        "projects--incidentmemory-ai--1"
+        "rent-and-fees--when-rent-is-due--1"
       ]
     },
     {
-      "id": "proj-3",
-      "category": "project",
-      "question": "What is the MCP tool-calling agent?",
+      "id": "rent-4",
+      "category": "rent",
+      "question": "What is the late fee?",
       "first_relevant_rank": 1,
-      "top1": "projects--mcp-tool-calling-agent--1",
-      "top1_dense": 0.7044,
+      "top1": "rent-and-fees--when-rent-is-due--1",
+      "top1_dense": 0.4717,
       "expected": [
-        "projects--mcp-tool-calling-agent--1"
+        "rent-and-fees--one-time-and-situational-fees--1",
+        "rent-and-fees--when-rent-is-due--1"
       ]
     },
     {
-      "id": "proj-4",
-      "category": "project",
-      "question": "What did he find in TriageTune?",
+      "id": "rent-5",
+      "category": "rent",
+      "question": "How much is the security deposit?",
       "first_relevant_rank": 1,
-      "top1": "projects--triagetune--1",
-      "top1_dense": 0.4889,
+      "top1": "rent-and-fees--security-deposit--1",
+      "top1_dense": 0.5483,
       "expected": [
-        "projects--triagetune--1"
+        "rent-and-fees--security-deposit--1"
       ]
     },
     {
-      "id": "proj-5",
+      "id": "rent-6",
       "category": "paraphrase",
-      "question": "What problem does his document retrieval system solve?",
+      "question": "Are utilities included in the rent?",
       "first_relevant_rank": 1,
-      "top1": "projects--incidentmemory-ai--1",
-      "top1_dense": 0.4001,
+      "top1": "rent-and-fees--recurring-monthly-charges--1",
+      "top1_dense": 0.5296,
       "expected": [
-        "projects--incidentmemory-ai--1"
+        "rent-and-fees--recurring-monthly-charges--1"
       ]
     },
     {
-      "id": "proj-6",
+      "id": "rent-7",
       "category": "paraphrase",
-      "question": "Has he built anything with agents?",
+      "question": "How can I pay my rent?",
       "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.3995,
+      "top1": "rent-and-fees--when-rent-is-due--1",
+      "top1_dense": 0.5158,
       "expected": [
-        "projects--agentiq--1",
-        "projects--mcp-tool-calling-agent--1"
+        "rent-and-fees--when-rent-is-due--1"
       ]
     },
     {
-      "id": "proj-7",
+      "id": "lease-1",
+      "category": "lease",
+      "question": "How long is the lease?",
+      "first_relevant_rank": 1,
+      "top1": "lease-terms--standard-lease-length--1",
+      "top1_dense": 0.5291,
+      "expected": [
+        "lease-terms--standard-lease-length--1"
+      ]
+    },
+    {
+      "id": "lease-2",
+      "category": "lease",
+      "question": "How much notice do I need to give before moving out?",
+      "first_relevant_rank": 1,
+      "top1": "move-in-move-out--notice-and-move-out--1",
+      "top1_dense": 0.6281,
+      "expected": [
+        "lease-terms--notice-to-vacate--1",
+        "move-in-move-out--notice-and-move-out--1"
+      ]
+    },
+    {
+      "id": "lease-3",
+      "category": "lease",
+      "question": "What happens if I break my lease early?",
+      "first_relevant_rank": 1,
+      "top1": "lease-terms--breaking-a-lease-early--1",
+      "top1_dense": 0.582,
+      "expected": [
+        "lease-terms--breaking-a-lease-early--1"
+      ]
+    },
+    {
+      "id": "lease-4",
+      "category": "lease",
+      "question": "Can I smoke on the balcony?",
+      "first_relevant_rank": 1,
+      "top1": "lease-terms--smoking--1",
+      "top1_dense": 0.4567,
+      "expected": [
+        "lease-terms--smoking--1"
+      ]
+    },
+    {
+      "id": "lease-5",
+      "category": "lease",
+      "question": "What are the quiet hours?",
+      "first_relevant_rank": 1,
+      "top1": "lease-terms--quiet-hours--1",
+      "top1_dense": 0.612,
+      "expected": [
+        "lease-terms--quiet-hours--1"
+      ]
+    },
+    {
+      "id": "lease-6",
       "category": "paraphrase",
-      "question": "Has he done any fine-tuning work?",
+      "question": "Can I rent my place out on Airbnb?",
       "first_relevant_rank": 1,
-      "top1": "projects--triagetune--1",
-      "top1_dense": 0.3766,
+      "top1": "lease-terms--subletting--1",
+      "top1_dense": 0.39,
       "expected": [
-        "projects--triagetune--1"
+        "lease-terms--subletting--1"
       ]
     },
     {
-      "id": "tech-1",
-      "category": "project_tech",
-      "question": "What technologies did he use in AgentIQ?",
-      "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.5677,
-      "expected": [
-        "projects--agentiq--1"
-      ]
-    },
-    {
-      "id": "tech-2",
-      "category": "project_tech",
-      "question": "What vector database does IncidentMemory use?",
-      "first_relevant_rank": 1,
-      "top1": "projects--incidentmemory-ai--1",
-      "top1_dense": 0.4651,
-      "expected": [
-        "projects--incidentmemory-ai--1"
-      ]
-    },
-    {
-      "id": "tech-3",
-      "category": "project_tech",
-      "question": "How did he do reranking?",
-      "first_relevant_rank": 1,
-      "top1": "projects--incidentmemory-ai--1",
-      "top1_dense": 0.2144,
-      "expected": [
-        "projects--incidentmemory-ai--1"
-      ]
-    },
-    {
-      "id": "tech-4",
-      "category": "project_tech",
-      "question": "Did he use Kubernetes anywhere?",
-      "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.3289,
-      "expected": [
-        "projects--agentiq--1",
-        "technical-skills--1"
-      ]
-    },
-    {
-      "id": "tech-5",
-      "category": "project_tech",
-      "question": "Did he use LangGraph anywhere?",
-      "first_relevant_rank": 1,
-      "top1": "technical-skills--1",
-      "top1_dense": 0.3599,
-      "expected": [
-        "projects--agentiq--1",
-        "technical-skills--1"
-      ]
-    },
-    {
-      "id": "tech-6",
-      "category": "project_tech",
-      "question": "How did he test the MCP agent?",
-      "first_relevant_rank": 1,
-      "top1": "projects--mcp-tool-calling-agent--1",
-      "top1_dense": 0.509,
-      "expected": [
-        "projects--mcp-tool-calling-agent--1"
-      ]
-    },
-    {
-      "id": "tech-7",
-      "category": "project_tech",
-      "question": "What front-end framework did he use in AgentIQ?",
-      "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.5651,
-      "expected": [
-        "projects--agentiq--1"
-      ]
-    },
-    {
-      "id": "tech-8",
+      "id": "lease-7",
       "category": "paraphrase",
-      "question": "How well did AgentIQ score on evaluation?",
+      "question": "How many people can live in a one bedroom?",
       "first_relevant_rank": 1,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.4983,
+      "top1": "lease-terms--occupancy--1",
+      "top1_dense": 0.4495,
       "expected": [
-        "projects--agentiq--1"
+        "lease-terms--occupancy--1"
       ]
     },
     {
-      "id": "exp-1",
-      "category": "experience",
-      "question": "What work experience does he have?",
-      "first_relevant_rank": 4,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.3178,
-      "expected": [
-        "experience--graduate-research-assistant--1",
-        "experience--machine-learning-intern--1",
-        "experience--software-engineering-intern--1"
-      ]
-    },
-    {
-      "id": "exp-2",
-      "category": "experience",
-      "question": "What did he do at Codecasa?",
+      "id": "pet-1",
+      "category": "pets",
+      "question": "What is the pet fee?",
       "first_relevant_rank": 1,
-      "top1": "experience--machine-learning-intern--1",
-      "top1_dense": 0.298,
+      "top1": "pets--pet-charges--1",
+      "top1_dense": 0.5614,
       "expected": [
-        "experience--machine-learning-intern--1"
+        "pets--pet-charges--1"
       ]
     },
     {
-      "id": "exp-3",
-      "category": "experience",
-      "question": "Tell me about his research assistant role.",
+      "id": "pet-2",
+      "category": "pets",
+      "question": "Is the pet fee refundable?",
+      "first_relevant_rank": 1,
+      "top1": "pets--pet-charges--1",
+      "top1_dense": 0.5101,
+      "expected": [
+        "pets--pet-charges--1"
+      ]
+    },
+    {
+      "id": "pet-3",
+      "category": "pets",
+      "question": "Can I have a dog?",
+      "first_relevant_rank": 1,
+      "top1": "pets--what-is-allowed--1",
+      "top1_dense": 0.3682,
+      "expected": [
+        "pets--what-is-allowed--1"
+      ]
+    },
+    {
+      "id": "pet-4",
+      "category": "pets",
+      "question": "Are there breed restrictions?",
+      "first_relevant_rank": 1,
+      "top1": "pets--what-is-allowed--1",
+      "top1_dense": 0.4383,
+      "expected": [
+        "pets--what-is-allowed--1"
+      ]
+    },
+    {
+      "id": "pet-5",
+      "category": "pets",
+      "question": "How many pets can I have?",
+      "first_relevant_rank": 1,
+      "top1": "pets--what-is-allowed--1",
+      "top1_dense": 0.5071,
+      "expected": [
+        "pets--what-is-allowed--1"
+      ]
+    },
+    {
+      "id": "pet-6",
+      "category": "paraphrase",
+      "question": "Do I pay a pet fee for a service animal?",
+      "first_relevant_rank": 1,
+      "top1": "pets--service-and-assistance-animals--1",
+      "top1_dense": 0.5268,
+      "expected": [
+        "pets--service-and-assistance-animals--1"
+      ]
+    },
+    {
+      "id": "pet-7",
+      "category": "paraphrase",
+      "question": "Do I have to pick up after my dog?",
+      "first_relevant_rank": 1,
+      "top1": "pets--pet-rules-on-the-property--1",
+      "top1_dense": 0.386,
+      "expected": [
+        "pets--pet-rules-on-the-property--1"
+      ]
+    },
+    {
+      "id": "park-1",
+      "category": "parking",
+      "question": "How does parking work?",
+      "first_relevant_rank": 1,
+      "top1": "parking--resident-parking--1",
+      "top1_dense": 0.5046,
+      "expected": [
+        "parking--resident-parking--1"
+      ]
+    },
+    {
+      "id": "park-2",
+      "category": "parking",
+      "question": "How much is a reserved parking space?",
+      "first_relevant_rank": 1,
+      "top1": "parking--resident-parking--1",
+      "top1_dense": 0.584,
+      "expected": [
+        "parking--resident-parking--1"
+      ]
+    },
+    {
+      "id": "park-3",
+      "category": "parking",
+      "question": "Where can my guests park?",
+      "first_relevant_rank": 1,
+      "top1": "parking--guest-parking--1",
+      "top1_dense": 0.5511,
+      "expected": [
+        "parking--guest-parking--1"
+      ]
+    },
+    {
+      "id": "park-4",
+      "category": "paraphrase",
+      "question": "Is there anywhere to charge an electric car?",
+      "first_relevant_rank": 1,
+      "top1": "parking--electric-vehicles--1",
+      "top1_dense": 0.5115,
+      "expected": [
+        "parking--electric-vehicles--1"
+      ]
+    },
+    {
+      "id": "park-5",
+      "category": "paraphrase",
+      "question": "Can I keep a boat in the lot?",
       "first_relevant_rank": 2,
-      "top1": "projects--agentiq--1",
-      "top1_dense": 0.4395,
+      "top1": "parking--towing--1",
+      "top1_dense": 0.3377,
       "expected": [
-        "experience--graduate-research-assistant--1"
+        "parking--vehicle-restrictions--1"
       ]
     },
     {
-      "id": "exp-4",
+      "id": "amen-1",
+      "category": "amenities",
+      "question": "What time does the gym open?",
+      "first_relevant_rank": 1,
+      "top1": "amenities--hours-and-access--1",
+      "top1_dense": 0.3689,
+      "expected": [
+        "amenities--hours-and-access--1"
+      ]
+    },
+    {
+      "id": "amen-2",
+      "category": "amenities",
+      "question": "Is there a pool?",
+      "first_relevant_rank": 2,
+      "top1": "amenities--guests-at-amenities--1",
+      "top1_dense": 0.3568,
+      "expected": [
+        "amenities--hours-and-access--1"
+      ]
+    },
+    {
+      "id": "amen-3",
+      "category": "amenities",
+      "question": "Is there laundry in the unit?",
+      "first_relevant_rank": 1,
+      "top1": "amenities--hours-and-access--1",
+      "top1_dense": 0.373,
+      "expected": [
+        "amenities--hours-and-access--1"
+      ]
+    },
+    {
+      "id": "amen-4",
       "category": "paraphrase",
-      "question": "Has he ever built data pipelines professionally?",
+      "question": "Can I book the lounge for a party?",
       "first_relevant_rank": 1,
-      "top1": "experience--machine-learning-intern--1",
-      "top1_dense": 0.4645,
+      "top1": "amenities--hours-and-access--1",
+      "top1_dense": 0.2897,
       "expected": [
-        "experience--machine-learning-intern--1"
+        "amenities--hours-and-access--1"
       ]
     },
     {
-      "id": "exp-5",
-      "category": "experience",
-      "question": "What did he do at Coding Raja Technologies?",
-      "first_relevant_rank": 1,
-      "top1": "experience--software-engineering-intern--1",
-      "top1_dense": 0.6079,
-      "expected": [
-        "experience--software-engineering-intern--1"
-      ]
-    },
-    {
-      "id": "exp-6",
+      "id": "amen-5",
       "category": "paraphrase",
-      "question": "Does he have any front-end web development experience at a job?",
+      "question": "How long do you hold packages?",
+      "first_relevant_rank": null,
+      "top1": "move-in-move-out--security-deposit-return--1",
+      "top1_dense": 0.2715,
+      "expected": [
+        "amenities--hours-and-access--1"
+      ]
+    },
+    {
+      "id": "maint-1",
+      "category": "maintenance",
+      "question": "How do I submit a maintenance request?",
       "first_relevant_rank": 1,
-      "top1": "experience--software-engineering-intern--1",
-      "top1_dense": 0.3987,
+      "top1": "maintenance--routine-maintenance-requests--1",
+      "top1_dense": 0.5411,
       "expected": [
-        "experience--software-engineering-intern--1"
+        "maintenance--routine-maintenance-requests--1"
       ]
     },
     {
-      "id": "exp-7",
-      "category": "experience",
-      "question": "How long was he at Codecasa?",
+      "id": "maint-2",
+      "category": "maintenance",
+      "question": "How long does a routine repair take?",
       "first_relevant_rank": 1,
-      "top1": "experience--machine-learning-intern--1",
-      "top1_dense": 0.2842,
+      "top1": "maintenance--routine-maintenance-requests--1",
+      "top1_dense": 0.52,
       "expected": [
-        "experience--machine-learning-intern--1"
+        "maintenance--routine-maintenance-requests--1"
       ]
     },
     {
-      "id": "pub-1",
-      "category": "publication",
-      "question": "Has he published anything?",
+      "id": "maint-3",
+      "category": "maintenance",
+      "question": "Will I be charged for a clogged drain?",
       "first_relevant_rank": 1,
-      "top1": "publication--1",
-      "top1_dense": 0.1784,
+      "top1": "maintenance--charges-for-repairs--1",
+      "top1_dense": 0.4107,
       "expected": [
-        "publication--1"
+        "maintenance--charges-for-repairs--1"
       ]
     },
     {
-      "id": "pub-2",
-      "category": "publication",
-      "question": "Tell me about his paper.",
-      "first_relevant_rank": 4,
-      "top1": "experience--graduate-research-assistant--1",
-      "top1_dense": 0.2283,
-      "expected": [
-        "publication--1"
-      ]
-    },
-    {
-      "id": "pub-3",
+      "id": "maint-4",
       "category": "paraphrase",
-      "question": "What conference was his research published at?",
-      "first_relevant_rank": 1,
-      "top1": "publication--1",
-      "top1_dense": 0.332,
+      "question": "Do you give notice before entering my apartment?",
+      "first_relevant_rank": 3,
+      "top1": "move-in-move-out--notice-and-move-out--1",
+      "top1_dense": 0.5343,
       "expected": [
-        "publication--1"
+        "maintenance--entry-for-maintenance--1"
       ]
     },
     {
-      "id": "skill-1",
-      "category": "skills",
-      "question": "What programming languages does he know?",
-      "first_relevant_rank": 1,
-      "top1": "technical-skills--1",
-      "top1_dense": 0.4286,
-      "expected": [
-        "technical-skills--1"
-      ]
-    },
-    {
-      "id": "skill-2",
+      "id": "maint-5",
       "category": "paraphrase",
-      "question": "Is he familiar with Docker?",
+      "question": "Who changes the air filters?",
       "first_relevant_rank": 1,
-      "top1": "technical-skills--1",
-      "top1_dense": 0.2824,
+      "top1": "maintenance--filters-and-resident-upkeep--1",
+      "top1_dense": 0.4573,
       "expected": [
-        "technical-skills--1"
+        "maintenance--filters-and-resident-upkeep--1"
       ]
     },
     {
-      "id": "skill-3",
-      "category": "skills",
-      "question": "What cloud platforms has he worked with?",
+      "id": "move-1",
+      "category": "movein",
+      "question": "What do I need before I get my keys?",
       "first_relevant_rank": 1,
-      "top1": "technical-skills--1",
-      "top1_dense": 0.4136,
+      "top1": "move-in-move-out--before-move-in--1",
+      "top1_dense": 0.465,
       "expected": [
-        "technical-skills--1"
+        "move-in-move-out--before-move-in--1"
       ]
     },
     {
-      "id": "cert-1",
-      "category": "certifications",
-      "question": "Does he have any certifications?",
+      "id": "move-2",
+      "category": "movein",
+      "question": "Do I need renters insurance?",
       "first_relevant_rank": 1,
-      "top1": "certifications--1",
-      "top1_dense": 0.4013,
+      "top1": "move-in-move-out--before-move-in--1",
+      "top1_dense": 0.3079,
       "expected": [
-        "certifications--1"
+        "move-in-move-out--before-move-in--1"
       ]
     },
     {
-      "id": "loc-1",
-      "category": "location",
-      "question": "Where is he based and would he relocate?",
+      "id": "move-3",
+      "category": "moveout",
+      "question": "When do I get my security deposit back?",
       "first_relevant_rank": 1,
-      "top1": "location--1",
-      "top1_dense": 0.4576,
+      "top1": "move-in-move-out--security-deposit-return--1",
+      "top1_dense": 0.5893,
       "expected": [
-        "location--1"
+        "move-in-move-out--security-deposit-return--1"
+      ]
+    },
+    {
+      "id": "move-4",
+      "category": "moveout",
+      "question": "What do I have to clean before moving out?",
+      "first_relevant_rank": 1,
+      "top1": "move-in-move-out--move-out-condition--1",
+      "top1_dense": 0.5712,
+      "expected": [
+        "move-in-move-out--move-out-condition--1"
+      ]
+    },
+    {
+      "id": "move-5",
+      "category": "paraphrase",
+      "question": "What hours can I move my furniture in?",
+      "first_relevant_rank": 1,
+      "top1": "move-in-move-out--moving-hours-and-elevator--1",
+      "top1_dense": 0.5663,
+      "expected": [
+        "move-in-move-out--moving-hours-and-elevator--1"
       ]
     },
     {
@@ -424,26 +588,26 @@
       "category": "unanswerable",
       "question": "What is the capital of France?",
       "first_relevant_rank": null,
-      "top1": "certifications--1",
-      "top1_dense": 0.0766,
+      "top1": "parking--resident-parking--1",
+      "top1_dense": 0.1016,
       "expected": []
     },
     {
       "id": "un-2",
       "category": "unanswerable",
-      "question": "Can you write me a Python script to sort a list?",
+      "question": "Can you write me a Python script?",
       "first_relevant_rank": null,
-      "top1": "projects--triagetune--1",
-      "top1_dense": 0.173,
+      "top1": "contact-and-hours--how-to-reach-the-office--1",
+      "top1_dense": 0.1112,
       "expected": []
     },
     {
       "id": "un-3",
       "category": "unanswerable",
-      "question": "What's the weather like today?",
+      "question": "What's the weather tomorrow?",
       "first_relevant_rank": null,
-      "top1": "certifications--1",
-      "top1_dense": 0.101,
+      "top1": "maintenance--routine-maintenance-requests--1",
+      "top1_dense": 0.1454,
       "expected": []
     },
     {
@@ -451,17 +615,26 @@
       "category": "unanswerable",
       "question": "Who won the World Cup?",
       "first_relevant_rank": null,
-      "top1": "experience--software-engineering-intern--1",
-      "top1_dense": 0.0756,
+      "top1": "rent-and-fees--security-deposit--1",
+      "top1_dense": -0.0076,
       "expected": []
     },
     {
       "id": "un-5",
       "category": "unanswerable",
-      "question": "Explain how transformers work.",
+      "question": "Explain how a mortgage works.",
       "first_relevant_rank": null,
-      "top1": "projects--triagetune--1",
-      "top1_dense": 0.1655,
+      "top1": "move-in-move-out--before-move-in--1",
+      "top1_dense": 0.2287,
+      "expected": []
+    },
+    {
+      "id": "un-6",
+      "category": "unanswerable",
+      "question": "What are rents like in Chicago?",
+      "first_relevant_rank": null,
+      "top1": "rent-and-fees--recurring-monthly-charges--1",
+      "top1_dense": 0.3545,
       "expected": []
     }
   ]

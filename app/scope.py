@@ -11,13 +11,15 @@ Three independent mechanisms, each cheap and each with a documented blind spot:
                            instruction sitting INSIDE the resume is presented as
                            quoted data. Defence against a poisoned source document.
   3. check_sensitive_claim -- post-generation scan. If the model answered about a
-                           topic the resume genuinely does not cover (work
-                           authorisation, salary, clearance, references), the answer
+                           topic the documents genuinely do not cover (an individual's
+                           balance, application status, unit availability), the answer
                            is discarded and replaced with the missing-info reply,
                            whatever the model said.
 
-Limits, stated plainly: 1 and 3 are keyword-driven and defeatable by paraphrase.
-They are a safety net under the router and the grounded prompt, not a substitute.
+Limits, stated plainly: 1 and 3 are keyword-driven and defeatable by paraphrase. They
+are a safety net under the router and the grounded prompt, not a substitute. None of
+this eliminates hallucination; it narrows the paths to it and makes the common ones
+cheap to catch.
 """
 from __future__ import annotations
 
@@ -38,57 +40,34 @@ _INJECTION_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bsudo\b|\badmin\s+override\b|\boverride\s+code\b", "fake_authority"),
 )
 
-# Caller asks the agent to assert something the resume does not support.
+# Caller asks the agent to assert something the documents do not support.
 _FABRICATION_PATTERNS: tuple[tuple[str, str], ...] = (
-    (r"\b(say|tell|claim|pretend|confirm)\b.{0,40}\b(he|vamsi)\b.{0,40}\b(has|is|worked|built|holds|led)\b", "assert_unsupported"),
-    (r"\b(just|simply|go ahead and)\s+(say|claim|make up|invent|guess)", "assert_unsupported"),
-    (r"\b(make\s+up|invent|fabricate|exaggerate|embellish|inflate)\b", "explicit_fabrication"),
-    (r"\b(add|give him|pad)\b.{0,30}\b(years?\s+of\s+experience|certification|degree|credential)", "credential_inflation"),
-    (r"\bpretend\s+he\b", "assert_unsupported"),
-    (r"\bcan\s+you\s+(just\s+)?lie\b", "explicit_fabrication"),
+    (r"\b(just|simply|go ahead and)\s+(say|claim|make up|invent|guess|tell me)", "assert_unsupported"),
+    (r"\b(make\s+up|invent|fabricate|made\s+up)\b", "explicit_fabrication"),
+    (r"\b(pretend|act like|imagine)\b.{0,30}\b(rent|fee|deposit|policy|available|approved)\b", "assert_unsupported"),
+    (r"\b(can\s+you\s+)?(just\s+)?(waive|drop|lower|change|reduce|remove)\b.{0,25}\b(fee|rent|deposit|charge|policy)\b", "policy_change"),
+    (r"\b(say|tell)\s+(me\s+)?(it'?s|the rent is|the fee is)\b.{0,25}\b(free|waived|cheaper|\$?\d)", "assert_unsupported"),
+    (r"\bcan\s+you\s+(just\s+)?lie\b|\bmake\s+an\s+exception\b", "explicit_fabrication"),
+    (r"\b(approve|accept|guarantee)\s+(me|my application|us)\b", "assert_unsupported"),
 )
 
-# Topics the resume does not address. The resume is one page about school, three
-# internships/roles and three projects -- it says nothing about any of these, so a
-# confident answer here is a hallucination by construction.
+# Topics the documents provably do not cover. This corpus is one property's published
+# policies: it has no account system, no availability feed and no applicant records, so
+# a confident answer here is a hallucination by construction.
 _SENSITIVE_TOPICS: tuple[tuple[str, str], ...] = (
-    (r"\b(visa|h1b|h-1b|opt|cpt|green\s+card|sponsorship|citizenship|immigration)\b", "work_authorization"),
-    (r"\b(work\s+authori[sz]\w*|authori[sz]ed\s+to\s+work|eligible\s+to\s+work|right\s+to\s+work)\b", "work_authorization"),
-    (r"\b(salary|compensation|pay\s+expectation|rate|how\s+much.{0,20}(earn|charge|want))\b", "compensation"),
-    (r"\b(security\s+clearance|clearance\s+level|background\s+check)\b", "clearance"),
-    (r"\b(reference|referee|recommendation\s+letter|former\s+manager)\b", "references"),
-    (r"\b(age|married|marital|religion|ethnicity|disability|health|nationality|gender)\b", "protected_personal"),
-    (r"\bhow\s+old\b|\bdate\s+of\s+birth\b|\bborn\b", "protected_personal"),
-    (r"\b(phone\s+number|email\s+address|home\s+address|where\s+does\s+he\s+live)\b", "contact_details"),
+    (r"\b(my|our|the)\s+(balance|account|ledger|statement)\b|\bhow much do i owe\b|\bdo i owe\b", "account_balance"),
+    (r"\b(am i|was i|did i get)\s+(approved|accepted|denied|rejected)\b"
+     r"|\b(status of|check)\s+my\s+application\b|\bmy application\b", "application_status"),
+    (r"\b(is|are)\s+(there\s+)?(any\s+)?(units?|apartments?|anything)\s+(available|open|vacant)\b"
+     r"|\bavailability\b|\bwhen can i move in\b|\bcurrent(ly)? available\b", "availability"),
+    (r"\b(my|our)\s+(lease|unit|apartment|rent)\b.{0,30}\b(end|expire|due|start|renew)\b"
+     r"|\bwhen does my lease\b|\bwhat is my rent\b|\bmy rent amount\b", "individual_lease"),
+    (r"\b(book|schedule|reserve|set up)\b.{0,20}\b(tour|showing|viewing|appointment)\b", "booking"),
+    (r"\b(credit score|ssn|social security|bank account|card number|routing number)\b", "sensitive_personal"),
+    (r"\b(sue|lawsuit|legal advice|lawyer|attorney|tenant rights law|evict(ion|ed)?)\b", "legal_advice"),
+    (r"\b(my neighbou?r|the (person|family) (in|next))\b.{0,30}\b(name|phone|who)\b"
+     r"|\bwho lives in\b", "other_residents"),
 )
-
-
-# A whole turn that is only a greeting, thanks, or an acknowledgement. Matched
-# deterministically and only when the turn is short and contains nothing else, so
-# "Hi, tell me about his education" is NOT caught here and goes to the router.
-_PLEASANTRY = re.compile(
-    r"^(hi|hey|hello|yo|good\s+(morning|afternoon|evening)|greetings)"
-    r"(\s+(there|again))?[\s,.!]*(how\s+are\s+you[\s,.!?]*)?$"
-    r"|^(thanks|thank\s+you|ta|cheers)([\s,]+(that'?s\s+)?(helpful|great|perfect|useful|all))?[\s,.!]*$"
-    r"|^(ok|okay|okey|got\s+it|i\s+see|sure|right|cool|nice|great|perfect|alright)[\s,.!]*$"
-    r"|^(bye|goodbye|see\s+you|that'?s\s+all|that'?s\s+it|no\s+thanks|i'?m\s+good)[\s,.!]*$",
-    re.I,
-)
-MAX_PLEASANTRY_WORDS = 6
-
-
-def is_pleasantry(text: str) -> bool:
-    """True when the whole turn is social, with no question attached.
-
-    Checked before reference resolution because "Hi there" and "Thanks, that's helpful"
-    both contain words ("there", "that's") that a reference detector reads as pointing
-    at something -- which used to make the agent answer a greeting by asking which
-    project the caller meant.
-    """
-    cleaned = normalise_speech(text)
-    if not cleaned or len(cleaned.split()) > MAX_PLEASANTRY_WORDS:
-        return False
-    return bool(_PLEASANTRY.match(cleaned))
 
 
 # Speech-to-text disfluencies that break literal pattern matching.
@@ -124,6 +103,37 @@ def normalise_speech(text: str) -> str:
         if cleaned == before:
             break
     return cleaned
+
+
+# A whole turn that is only a greeting, thanks, or an acknowledgement. Matched
+# deterministically and only when the turn is short and contains nothing else, so
+# "Hi, what's the pet fee?" is NOT caught here and goes to the router.
+_PLEASANTRY = re.compile(
+    r"^(hi|hey|hello|yo|good\s+(morning|afternoon|evening)|greetings)"
+    r"(\s+(there|again))?[\s,.!]*(how\s+are\s+you[\s,.!?]*)?$"
+    r"|^(thanks|thank\s+you|ta|cheers)([\s,]+(that'?s\s+)?(helpful|great|perfect|useful|all))?[\s,.!]*$"
+    r"|^(ok|okay|okey|got\s+it|i\s+see|sure|right|cool|nice|great|perfect|alright)[\s,.!]*$"
+    r"|^(bye|goodbye|see\s+you|that'?s\s+all|that'?s\s+it|no\s+thanks|i'?m\s+good)[\s,.!]*$",
+    re.I,
+)
+MAX_PLEASANTRY_WORDS = 6
+
+
+def is_pleasantry(text: str) -> bool:
+    """True when the whole turn is social, with no question attached.
+
+    Checked before reference resolution because "Hi there" and "Thanks, that's helpful"
+    both contain words ("there", "that's") that a reference detector reads as pointing
+    at something -- which used to make the agent answer a greeting by asking which
+    policy the caller meant.
+
+    NOTE: a bare "yes"/"ok" during a pending maintenance confirmation must NOT land
+    here. `sanitize` checks for a pending confirmation BEFORE calling this.
+    """
+    cleaned = normalise_speech(text)
+    if not cleaned or len(cleaned.split()) > MAX_PLEASANTRY_WORDS:
+        return False
+    return bool(_PLEASANTRY.match(cleaned))
 
 
 def _matches(text: str, patterns: tuple[tuple[str, str], ...]) -> list[str]:
@@ -173,10 +183,10 @@ def check_sensitive_claim(question: str, answer: str) -> str | None:
     if not topics:
         return None
     declined = re.search(
-        r"(resume\s+does(n't| not)\s+(provide|say|mention|include|cover)"
-        r"|not\s+(in|something)\s+(the\s+)?resume"
-        r"|doesn't\s+(provide|mention|say)"
-        r"|I\s+(don't|do not)\s+have\s+that"
+        r"(don't have (that|it) in the (property )?documents"
+        r"|documents?\s+do(n't| not)\s+(say|cover|mention|include|list)"
+        r"|not\s+in\s+the\s+(property\s+)?documents"
+        r"|I\s+(don't|do not|can't|cannot)\s+(have|see|access|look\s+(that|it)?\s*up)"
         r"|I\s+can\s+help\s+with\s+questions\s+about)",
         answer,
         re.I,

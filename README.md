@@ -1,21 +1,25 @@
-# Resume Voice Agent
+# Rental FAQ Voice Assistant
 
-A voice agent that answers questions about one person using only their resume. Vapi
-handles the call; a LangGraph workflow decides what to say. It refuses unrelated
-questions, says so when the resume doesn't cover something, and declines to invent
-credentials.
+**Personal prototype · fictional sample property.** A voice assistant that answers
+questions about one rental property using only that property's documents, and that can
+file a demo maintenance request through an n8n workflow after the caller explicitly
+confirms it.
+
+Maple Court Apartments does not exist. Every price, policy, phone number and address in
+`data/rental/` is invented. There are no real tenants, no accounts, no availability feed,
+and nothing here is deployed for a real company.
 
 ```
 caller speaks
    -> Vapi                       speech-to-text, turn-taking, interruptions
-      -> POST /chat/completions  OpenAI-compatible custom-LLM endpoint
+      -> POST /chat/completions  OpenAI Chat Completions wire format (not OpenAPI)
          -> LangGraph            scope -> retrieve -> ground
+                                 or: collect -> confirm -> submit
+            -> n8n webhook       only after an explicit "yes"
+            <- {status, ticket_id, request_id}
       <- SSE chat.completion.chunk
    <- Vapi                       text-to-speech
 ```
-
-Verified on live voice calls. Setup, architecture, measured results and limits below;
-the reasoning behind each decision is in the code comments.
 
 ---
 
@@ -24,8 +28,8 @@ the reasoning behind each decision is in the code comments.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock.txt
-cp .env.example .env                  # add your OPENAI_API_KEY
-python scripts/rebuild.py             # verify the resume source, build the index
+cp .env.example .env                 # add your OPENAI_API_KEY
+python scripts/rebuild.py            # check the corpus, build the index
 uvicorn app.server:app --port 8000
 ```
 
@@ -33,289 +37,331 @@ Open <http://127.0.0.1:8000>. Without Vapi credentials the page runs in **text m
 which exercises the identical pipeline over `POST /text` — every behaviour below is
 demonstrable with no spend and no public URL.
 
+### Example questions
+
+| | |
+|---|---|
+| Supported | "What are the office hours?" · "How much is a two bedroom?" · "What is the pet fee?" · "Can I have a dog?" · "Where can my guests park?" |
+| Follow-up | "What is the pet fee?" → **"Is that refundable?"** |
+| Missing | "What is my balance?" · "Was my application approved?" · "Are there any units available?" |
+| Unrelated | "What is the capital of France?" |
+| Maintenance | "I want to report a leaking kitchen faucet" → "it's unit 2B" → "yes" |
+| Emergency | "My kitchen is flooding" |
+
+### Checks
+
 ```bash
-pytest -q                                                       # 134 offline tests
-python eval/run_retrieval_eval.py --hybrid --dense-weight 0.8   # Hit@k, Recall@k, MRR
-python eval/run_grounding_eval.py --base http://127.0.0.1:8000  # 31 behavioural cases
+pytest -q                                                       # 231 offline tests
+python scripts/check_corpus.py                                  # corpus contradictions
+python eval/run_retrieval_eval.py --hybrid --dense-weight 0.9   # Hit@k, Recall@k, MRR
+python eval/run_grounding_eval.py --base http://127.0.0.1:8000  # 33 behavioural cases
 python eval/run_retrieval_eval.py --sweep                       # the threshold evidence
-python scripts/measure_latency.py --base http://127.0.0.1:8000
 ```
-
-### Connecting Vapi
-
-Expose the server over HTTPS, then create the assistant:
-
-```bash
-cloudflared tunnel --url http://localhost:8000
-export VAPI_PRIVATE_KEY=...           # dashboard.vapi.ai/org/api-keys
-python scripts/create_assistant.py --url https://YOUR-TUNNEL.trycloudflare.com
-```
-
-Open the printed URL and press Start call. Two settings matter:
-
-- **`metadataSendMode` stays at its default.** Setting it to `off` strips the `call`
-  object, and `call.id` is what maps a call to its LangGraph thread.
-- **Voice is `vapi`/`Elliot`.** ElevenLabs and most other providers need your own
-  provider key added first; without it Vapi rejects the assistant at call start and the
-  browser never even reaches the microphone prompt.
-
-**Set `SERVER_SECRET` before exposing anything.** It gates every route that spends money
-or returns data. Only two routes stay public: `/health` (readiness — no sessions, no
-config, no paths) and `/greeting`. The page prompts for the key in a password field and
-keeps it in `sessionStorage` for that tab; a `?secret=...` is accepted once but is moved
-into storage and stripped from the address bar, since a query string lands in browser
-history, in `Referer` headers and in every proxy log on the way.
-
-Share the link and the key separately. Session detail and tuning config live behind
-`/debug/sessions`.
 
 ---
 
-## How it works
+## The knowledge base
 
-### Knowledge source
+`data/rental/` holds ten markdown documents for one property: contact and hours,
+application, rent and fees, lease terms, pets, parking, amenities, maintenance, and
+move-in/move-out. One file per policy area, so a retrieved chunk names the document it
+came from — an answer about the pet fee is traceable to `pets.md`, not to "the corpus".
 
-`data/resume.md` is derived from `data/resume_source.pdf` — readable, diffable, and the
-only thing the agent retrieves from. `scripts/verify_source.py` fails if it contains a
-substantive term the PDF doesn't, unless the rewording is declared with a reason.
-Currently **99.4% of PDF terms present, 0 undeclared**.
+Chunking follows each document's own `##` sections, and the document title is embedded
+with each chunk so "what time does the gym open" can reach a section headed only
+"Hours and access". **45 chunks.** `00-about-this-corpus.md` is excluded from the index:
+it is a note to the reader, not an answer.
 
-Chunking follows the resume's own entry boundaries — one chunk per project, role and
-degree — so each project's technology list stays with its bullets. Entry headings
-(employer, dates) are embedded with the body. **12 chunks.**
+`scripts/check_corpus.py` guards consistency. Figures stated in more than one document
+(pet fee, late fee, notice period, …) must agree, or the agent will give two different
+answers depending on which chunk wins retrieval — which looks exactly like a
+hallucination. It currently reports no contradictions, and it does catch injected ones.
 
-Two sections are excluded from the index:
+**Embedding model: `text-embedding-3-small`, 1536d** — unchanged from the previous
+version of this project. 45 chunks is one batched call at startup and one ~60ms query
+embedding per turn; nothing in the measurements asks for a larger model.
 
-- **Contact** — the agent shouldn't read a phone number to an unknown caller.
-- **Summary** — it paraphrases every other section, so it matched everything and
-  nothing, taking rank 1 on six questions whose answer lived elsewhere. Removing it
-  moved Hit@1 from 0.778 to 0.889 and MRR from 0.868 to 0.931.
+Retrieval is brute-force cosine in numpy fused with a small BM25 signal by weighted RRF.
+No vector database: 45 vectors do not need one. The fusion weight was re-swept on this
+corpus (`--sweep-weight`) and 0.9 beat both dense-only and the 0.8 tuned on the previous
+corpus — a reminder that the constant belongs to the documents, not to the code.
 
-### Retrieval
+---
 
-**`text-embedding-3-small`, 1536d.** Chosen on size: 12 chunks means one batched call at
-startup and one ~60ms query embedding per turn. A local MiniLM removes the network hop
-but pulls ~2GB of torch for no measurable gain here.
-
-Brute-force cosine in numpy, fused with a small BM25 signal by weighted RRF. **No vector
-database** — FAISS on 12 vectors would be theatre.
-
-BM25 exists for a measured failure: dense retrieval ranked the Publication entry **7th**
-for *"Has he published anything?"*. The tokeniser emits each word plus its 5-character
-prefix, so `published` and `publication` meet at `publi` — a crude stand-in for
-stemming. The fusion weight was swept (`--sweep-weight`); 0.8 toward dense beat both
-dense-only and equal weighting, which actively hurt education queries.
-
-### Scope and grounding
+## Scope and grounding
 
 Five layers, because a prompt is a request, not a guarantee.
 
 | # | Layer | Model call? | Catches |
 |---|---|---|---|
-| 1 | Pattern checks on the raw turn | no | injection, fabrication requests, uncovered topics, greetings |
-| 2 | Router classification | yes | unrelated questions |
+| 1 | Pattern checks on the raw turn | no | injection, requests to change policy, topics the documents cannot cover, emergencies, greetings |
+| 2 | Router classification | yes | unrelated questions, maintenance intent |
 | 3 | Similarity backstop | no | obvious garbage |
 | 4 | Grounded prompt + no-evidence sentinel | yes | topic retrieved well, specific detail absent |
 | 5 | Post-generation topic check | no | an answer that strayed anyway |
 
-Three outcomes: **supported** → answered from retrieved passages; **relevant but
-missing** → *"The resume doesn't provide that detail."*; **unrelated** → *"I can help
-with questions about Vamsi's background and projects."*
+Three outcomes: **supported** → answered from retrieved documents; **relevant but
+missing** → *"I don't have that in the property documents."*; **unrelated** → *"I can
+help with questions about Maple Court's rent, lease, pets, parking, amenities or
+maintenance."*
 
-Visa status, salary, clearance and contact details route to **missing**, not unrelated —
-they are about the person, the resume just doesn't answer them.
+An individual's balance, application status, lease dates, or unit availability route to
+**missing** — they are about this property, the documents simply have no such data.
 
-**Why layered, with evidence.** The similarity gate cannot be the scope mechanism: the
-weakest answerable question scores **0.178** and the strongest off-topic one **0.173**.
-The distributions nearly touch, so `MIN_SIMILARITY` is set low (0.12) where it never
-blocks a real question, and layer 4 does the work.
+**Why layered, with evidence.** The similarity gate cannot be the scope mechanism: on
+the eval set the weakest answerable question scores **0.272** and the strongest off-topic
+one **0.354**. They overlap. So `MIN_SIMILARITY` is 0.23, low enough never to block a
+real question, and layer 4 does the work. The router is not trusted alone either — if it
+says out-of-scope but the top cosine is ≥ 0.45, the refusal is reversed.
 
-The router can't be trusted alone either — *"What did TriageTune find?"* was misrouted
-**about half the time**. So retrieval can overrule it: if the router says out-of-scope
-but the top cosine is ≥ 0.35 (off-topic never exceeded 0.173), the refusal is reversed.
-That took the grounding suite from flaky to stable.
+Retrieved documents are neutralised and fenced as quoted evidence, so an instruction
+written into a policy file reads as data. Refusals are fixed strings with no model call.
 
-Retrieved passages are neutralised and fenced as quoted evidence, so an instruction
-inside the resume reads as data. Refusals are fixed strings with no model call —
-instant, and they can't drift.
+**None of this eliminates hallucination.** It narrows the paths to it and makes the
+common ones cheap to catch. Layers 1 and 5 are keyword-driven and defeatable by
+paraphrase.
 
-### Workflow and state
+---
+
+## Conversation state
+
+`AgentState` is a TypedDict. Two fields persist across turns: `messages` (via the
+`add_messages` reducer) and `maintenance` (a pending request). **Everything else is
+per-turn scratch that `sanitize` explicitly resets** — a bug in the previous version left
+`route` persisting and silently disabled follow-up resolution after turn one.
+
+**Checkpointer: `AsyncSqliteSaver`**, opened once in the FastAPI lifespan. One Vapi
+`call.id` → one thread (`vapi-call:<id>`). Same call reuses it; separate calls are
+isolated. No call id means a fresh random one, never a shared conversation.
+
+Four distinctions worth stating plainly:
+
+- **Checkpoints preserve conversation state.** They store what was said, keyed by call.
+- **A call ID identifies a session, not an authenticated tenant.** Anyone can present any
+  id. There is no tenant authentication here, and the assistant has no per-tenant data to
+  protect — it reads one public document set.
+- **Vapi handles speech capture and turn detection.** Deciding the caller stopped talking
+  is Vapi's voice-activity detection, upstream of this server, which only ever receives
+  completed turns. LangGraph state does not identify speakers.
+- **SQLite and in-process locks are single-process.** Two workers would each keep their
+  own session registry, so the per-call serialisation guarantee breaks. Moving to
+  multiple workers means `AsyncPostgresSaver`, a Redis lock keyed on the call id, and
+  Redis-backed dedupe.
+
+Follow-ups work by rewriting a referential turn into a standalone one before retrieval:
+*"What is the pet fee?"* → *"Is that refundable?"* becomes *"Is the pet fee refundable?"*,
+which retrieves the pet-charges chunk and answers **"no, it is non-refundable"** rather
+than answering about the security deposit.
+
+---
+
+## The maintenance workflow
 
 ```
-sanitize -> interpret -> classify -> [retrieve -> generate] -> record -> END
-                                  \-> small_talk / refuse ---/
+"my kitchen faucet is leaking"   -> collecting            asks which unit
+"it's unit 2B"                   -> awaiting_confirmation reads back, asks to confirm
+"actually 3C"                    -> awaiting_confirmation updates, asks again
+"yes"                            -> POST to n8n           -> submitted or failed
 ```
 
-`AgentState` is a TypedDict. `messages` carries the `add_messages` reducer and is the
-**only** accumulating field — each turn appends exactly two. Everything else is per-turn
-scratch that `sanitize` explicitly resets. That reset is load-bearing: a bug left
-`route` persisting from the previous turn, which silently disabled follow-up resolution
-on every turn after the first. Two regression tests cover it.
+Three rules make this safe to demo:
 
-**Checkpointer: `AsyncSqliteSaver`**, opened once in the FastAPI lifespan. SQLite rather
-than in-memory so a restart doesn't drop live calls and persistence is demonstrable —
-`GET /debug/thread?call_id=...` reads a conversation back out of the file.
+1. **Submission requires an explicit confirmation**, matched by pattern on the caller's
+   own words — not by a model's judgement. "maybe", "I think so" and "hold on" do not
+   submit.
+2. **Success is announced only after validation**: 2xx, parseable JSON, `status:
+   "accepted"`, a `ticket_id`, and a `request_id` matching the one sent. Anything else —
+   timeout, non-2xx, malformed body, mismatched id — produces *"I couldn't confirm that
+   the request went through"* and a pointer to the office number.
+3. **A timeout is never retried.** n8n may already have created the ticket.
 
-**One Vapi `call.id` → one thread** (`vapi-call:<id>`). Same call reuses it; separate
-calls are isolated. No call id means a fresh random one, never a shared conversation.
+`request_id` is minted once per pending request and is stable across corrections, so a
+repeated "yes" or a duplicate delivery from Vapi submits once. The id is recorded in
+`submitted_ids` after success; a later confirmation replies "already submitted that one".
 
-A call id is **not identity** — anyone can present any id, and nothing here treats it as
-proof. Session continuity is not authentication. Checkpointing stores *what was said*,
-keyed by call; it has no idea who spoke. Turn detection is Vapi's voice-activity
-detection, upstream of this server. Speaker identity isn't solved here at all.
+**Emergencies bypass the workflow entirely.** Flooding, gas, fire, no heat, sewage, a
+burst pipe or a broken exterior lock produce the documented emergency instructions —
+call 911 first if anyone is in danger, then the 24-hour line — with no model call and no
+request queued. Emergency keyword matching is crude and will miss paraphrases; it is a
+floor, not a ceiling.
 
-### Concurrency and bounds
+**"Accepted" means the demo workflow returned a ticket. No property staff were notified
+and nobody is dispatched.**
 
-Turn-taking and interruptions are Vapi's. What's handled here:
+### Setting up n8n
 
-- **Overlapping turns** — an `asyncio.Lock` per call id. Two concurrent runs on one
-  thread would read the same checkpoint and write back conflicting versions. Different
-  calls still run in parallel.
-- **Duplicate requests** — fingerprinted on call id, content and the **caller's** view
-  of position (the length of the `messages` Vapi sent). Using our own checkpoint length
-  would break the only case this exists for: on a retry Vapi's view hasn't advanced but
-  ours has.
+1. **Import** `n8n/maintenance-workflow.json` (Workflows → Import from File). It contains
+   no credentials.
+2. **Set the shared secret inside n8n** as an environment variable named
+   `PROTOTYPE_SECRET`. The Code node reads `$env.PROTOTYPE_SECRET` and rejects requests
+   whose `X-Prototype-Secret` header does not match. On n8n Cloud, use Variables; on
+   self-hosted, set the env var on the n8n process and restart it.
+3. **Activate the workflow.** This matters: the **production** URL
+   (`/webhook/maintenance`) only works while the workflow is active. The **test** URL
+   (`/webhook-test/maintenance`) accepts a single request and only while you are watching
+   the editor — it is not usable for anything but one manual check.
+4. **Copy the production webhook URL** from the Webhook node and put it in `.env`:
 
-| Bound | Value |
-|---|---|
-| History replayed into the model | last 8 turns; older turns stay in the checkpoint |
-| Model call timeout | 12s, 1 retry |
-| Idle session cleanup | 1800s — frees locks and fingerprints, **not** checkpoint rows |
-| Dedupe memory | 32 fingerprints per call |
+```bash
+N8N_WEBHOOK_URL=https://your-n8n-host/webhook/maintenance
+N8N_WEBHOOK_SECRET=<the same value as PROTOTYPE_SECRET>
+```
 
-Checkpoint rows persist indefinitely. Fine for a demo; anything real needs a retention
-job, and transcripts are personal data.
+5. Restart the server. `GET /health` reports `n8n_configured: true`.
 
-**Scaling:** this is one process, and persistence alone does not solve scaling. The
-registry is in-process, so two workers would each keep their own and serialisation would
-break. In order: `AsyncPostgresSaver`; move the lock to Redis (the part persistence
-doesn't give you); dedupe to Redis; route by call id; add retention. Session isolation
-already survives — it's a property of the thread id. What breaks is serialisation
-*within* one call.
+The URL and the secret live only in `.env`. They are never sent to the browser, never
+logged, and `/health` reports only whether a workflow is configured, not where it is.
+
+### Testing without n8n
+
+`scripts/mock_n8n.py` mimics the workflow, including the failure modes:
+
+```bash
+python scripts/mock_n8n.py --port 5678            # or --mode timeout|error|malformed
+N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/maintenance \
+N8N_WEBHOOK_SECRET=test-secret uvicorn app.server:app --port 8000
+```
+
+---
+
+## Connecting Vapi
+
+Expose the server over HTTPS, then create the assistant:
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+export VAPI_PRIVATE_KEY=...          # dashboard.vapi.ai/org/api-keys
+python scripts/create_assistant.py --url https://YOUR-TUNNEL.trycloudflare.com
+```
+
+Two settings matter:
+
+- **`metadataSendMode` stays at its default.** Setting it to `off` strips the `call`
+  object, and `call.id` is what maps a call to its LangGraph thread.
+- **Voice is `vapi`/`Elliot`.** ElevenLabs and most other providers need your own
+  provider key added first; without it Vapi rejects the assistant at call start.
+
+**Set `SERVER_SECRET` before exposing anything.** Only `/health` and `/greeting` stay
+public.
+
+### On streaming, honestly
+
+The response uses SSE framing with OpenAI `chat.completion.chunk` objects terminated by
+`data: [DONE]`, which is what Vapi consumes. It is **not token-by-token streaming**: the
+graph produces one finished answer, emitted as a single content chunk plus a stop chunk.
+Real streaming would not help here — the route (answer, refusal, or confirmation prompt)
+is only known once the node finishes, so there is nothing to stream before then.
+
+"OpenAI-compatible" here means the **Chat Completions wire format**. That is unrelated to
+an OpenAPI specification.
 
 ---
 
 ## Results
 
-### Retrieval — 41 labeled questions (36 answerable, 5 off-topic)
+### Retrieval — 57 labeled questions (51 answerable, 6 off-topic)
 
-Labels name the chunk(s) containing the answer, written by reading `data/chunks.json`,
-not by running the retriever.
+Labels name the chunk(s) containing the answer, written by reading `data/chunks.json`.
 
 | k | Hit@k | Recall@k | |
 |---|---|---|---|
-| 1 | 0.889 | 0.847 | |
-| **3** | **0.944** | **0.944** | **the generator only sees these** |
-| 5 | 1.000 | 0.991 | diagnostic only |
+| 1 | 0.902 | 0.863 | |
+| **3** | **0.980** | **0.980** | **the generator only sees these** |
+| 5 | 0.980 | 0.980 | |
 
-MRR **0.931**. Dense-only baseline: Hit@1 0.861, MRR 0.912.
+MRR **0.938**. Dense-only baseline: Hit@1 0.882, MRR 0.925.
 
-- **Hit@k** — did *at least one* relevant chunk reach the top k. This was previously
-  mislabelled "Recall@k"; it is not, and the old name flattered the result.
-- **Recall@k** — the share of *all* relevant chunks retrieved. Differs on the 4
-  questions with more than one valid supporting chunk.
-- **Score separation** — answerable mean top-1 cosine **0.406** (min 0.178) vs off-topic
-  **0.118** (max 0.173). Sets both thresholds.
+- **Hit@k** — did at least one relevant chunk reach the top k.
+- **Recall@k** — the share of *all* relevant chunks retrieved. Differs on the 4 questions
+  with more than one valid source.
+- **Score separation** — answerable mean top-1 cosine **0.482** (min 0.272) vs off-topic
+  **0.156** (max 0.354).
 
-Four questions don't rank first. Two of them (`exp-1`, `pub-2`) land at rank 4 — with
-`TOP_K=3`, those chunks **never reach the generator**, so the agent cannot currently
-answer those two from retrieval.
+### Grounding — 33 behavioural cases, 33/33 across three runs
 
-### Grounding — 31 behavioural cases, 31/31 across three runs
-
-11 answered · 7 missing-detail · 4 unrelated · 4 fabrication · 4 injection · 1
-clarification.
+11 answered · 6 missing · 4 unrelated · 4 fabrication · 3 injection · 1 clarification ·
+2 emergency · 2 maintenance (collecting, awaiting confirmation).
 
 **This is pattern matching, not semantic judgement** — no model grades the output. A
-refusal is recognised by a regex covering the phrasings this agent produces, and
-grounding is asserted with substring checks. Every case carries a `must_not_contain`
-list of facts that would only appear if invented, so a case fails on fabrication even
-when refusal wording changes. Limits: a refusal phrased outside the regex scores as a
-failure even if correct, and a fabrication nobody listed scores as a pass.
+refusal is recognised by a regex covering the phrasings this agent produces; grounding is
+asserted with `must_not_contain` lists of facts that would only appear if invented. The
+maintenance cases assert on the request **status**, because "did not submit" is the claim
+that matters and only the state proves it.
 
-### 134 offline tests, no network
-
-Chunking · scope controls (including speech-disfluency regressions from the live call) ·
-retrieval · graph routing and state · sessions and concurrency · the Vapi HTTP contract ·
-endpoint authorisation and public-surface leakage. Plus `ruff` clean.
+Its limits are real and were hit during development: the agent correctly declined with
+"I have no evidence regarding the price of a three bedroom" and the regex scored it as a
+failure until the pattern was widened.
 
 ### Latency (localhost, excludes speech-to-text and text-to-speech)
 
-Answer 2.1s · with reference resolution 2.4s · router-decided refusal 0.5s ·
-**deterministic refusal 0.01s** (no model call — most of why layer 1 exists).
+Answer 2.2s · with follow-up resolution 2.5s · maintenance intake 1.5s · router-decided
+refusal 0.7s · **deterministic refusal 0.01s** (no model call — most of why layer 1
+exists, and why an emergency answer is instant).
 
-### Verified / not verified
+### 231 offline tests, no network
+
+Chunking · scope controls · retrieval · graph routing and state · the maintenance state
+machine and n8n client · sessions and concurrency · the Vapi HTTP contract · endpoint
+authorisation. Plus `ruff` clean.
+
+### What was verified, and how
 
 | | |
 |---|---|
-| **Locally** | 134 tests; retrieval and grounding evals; latency; thread isolation; checkpoint read-back; duplicate suppression; endpoint auth |
-| **On live Vapi calls** | Three browser calls, 15 turns. SSE framing accepted in production; `call.id` → thread mapping; memory held across 11 turns; calls stayed isolated; every refusal class fired over voice |
-| **Not verified** | Telephony (browser only). Barge-in not deliberately exercised. Concurrent callers not tested with real calls. No load testing |
-
-Two bugs only a live call could find: the CDN bundle double-wraps the SDK's CommonJS
-export so the constructor hung silently, and speech-to-text disfluencies (*"previous
-previous"*, *"from now, from now"*) defeated the injection patterns. The router still
-refused those — which is the argument for layering — and both are fixed with the
-verbatim transcriptions as regression tests.
+| **Verified locally, mocked** | 231 tests; retrieval and grounding evals; the n8n client against `httpx.MockTransport` for success, timeout, non-2xx, malformed body and mismatched request id |
+| **Verified locally, real HTTP** | The full collect → confirm → submit flow against `scripts/mock_n8n.py` over real HTTP, including duplicate confirmations creating exactly one ticket, corrections, declines, and all three failure modes |
+| **Verified on the running server** | Rental FAQs, the "is that refundable?" follow-up, all refusal classes, session isolation between two call ids, the Vapi SSE contract with a real `call` object |
+| **NOT verified** | **No live n8n instance.** No real n8n workflow has received a request from this backend. **No live Vapi voice call** has been made against the rental assistant — the voice path is unchanged from a version that was verified on live calls, but it has not been re-tested since the adaptation |
 
 ---
 
 ## Limitations
 
-1. **Browser calls only.** No phone number purchased; telephony untested.
-2. **Thresholds are tuned on the set they're measured on.** 36 answerable questions, no
-   holdout. One question moves Hit@1 by ~2.8 points.
-3. **Only 5 off-topic examples** behind the score-separation claim.
-4. **Two questions can't be answered** — their chunk ranks 4th, outside `TOP_K=3`.
-5. **Grounding eval is pattern-based**, not model-graded. See above.
-6. **Tense drifts occasionally** — about one phrasing in five says "is pursuing" rather
-   than "studied" for the finished degree. Dates are always right.
-7. **Reference resolution can pick the wrong kind of thing** — "that project" after an
-   education turn resolves to the degree. Grounding turns it into an honest "no
-   information" rather than a false claim, but the framing is odd.
+1. **n8n is unverified end to end.** Everything is tested against a mock that implements
+   the same contract. Importing the workflow and pointing `N8N_WEBHOOK_URL` at it is the
+   remaining step.
+2. **No live voice call since the adaptation.** The Vapi integration is structurally
+   unchanged and its HTTP contract is tested, but it has not been spoken to.
+3. **Thresholds are tuned on the set they are measured on** — 51 answerable questions, no
+   holdout.
+4. **Only 6 off-topic examples** behind the score-separation claim.
+5. **Emergency detection is keyword-based.** It will miss a paraphrase. A caller
+   describing a dangerous situation in unusual words gets the routine workflow.
+6. **Unit numbers are not validated.** The assistant accepts whatever the caller says as
+   a unit identifier; there is no unit list to check against.
+7. **Duplicate protection is per-session and in-process.** Two workers would each keep
+   their own `submitted_ids`. If n8n times out after processing, the caller is told it
+   could not be confirmed while a ticket may exist — deliberately, since the alternative
+   is a retry that definitely duplicates.
 8. **Pattern-based scope layers are defeatable by paraphrase.**
-9. **Single process**, in-process locks.
-10. **No checkpoint retention** — the SQLite file grows forever and holds transcripts.
-11. **No PII redaction in logs** — questions are logged truncated at 60 characters.
-12. **The access key is a single shared secret**, not per-user auth. It stops a stranger
-    who finds the URL; it does not distinguish between people who have it, and there is
-    no rotation or revocation beyond changing it and restarting.
+9. **No checkpoint retention.** The SQLite file grows forever and holds transcripts.
+10. **The corpus checker verifies repeated figures, not every claim.** It cannot prove the
+    documents are complete or sensible.
+11. **Single shared access key, not per-user auth.**
 
 ---
 
 ## Layout
 
 ```
-app/        config · chunking · embeddings · retriever · scope · prompts · graph · sessions · server
-data/       resume.md (knowledge source) · chunks.json (indexed corpus)
+app/        config · chunking · embeddings · retriever · scope · prompts · graph ·
+            maintenance (n8n client + confirmation state machine) · sessions · server
+data/rental/  the ten sample property documents
+data/       chunks.json (the indexed corpus)
 eval/       labeled sets and actual measured results
-scripts/    verify_source · rebuild · create_assistant · measure_latency
+n8n/        importable workflow (no credentials)
+scripts/    check_corpus · rebuild · create_assistant · mock_n8n · measure_latency
 web/        the browser call page
-tests/      134 offline tests
+tests/      231 offline tests
 ```
 
-> The source PDF is gitignored and the contact line in `resume.md` is redacted — both
-> carry a real phone number and email, and this repo is public. Nothing depends on them:
-> that section is excluded from the index. `verify_source.py` skips its check when the
-> PDF is absent; drop any resume PDF there to run it.
-
-### Swapping in a different resume
+### Adapting to a different property
 
 ```bash
-cp new_resume.pdf data/resume_source.pdf
-# edit data/resume.md to match, keeping the ## / ### structure
-python scripts/rebuild.py        # verifies, re-chunks, flags stale eval labels
+# edit or replace the documents in data/rental/
+python scripts/check_corpus.py     # catch contradictions first
+python scripts/rebuild.py          # re-chunk, flag stale eval labels
 ```
 
-Eval labels name specific chunk ids, so a different resume needs them rewritten by hand.
-That's deliberate — auto-generated labels would make the metrics meaningless.
-
----
-
-## Model choice
-
-**`gpt-4o-mini`** for both generation and routing. Voice is latency-bound — the caller
-hears silence while the agent thinks — so a small fast model beats a stronger slow one.
-The graph takes anything with `.invoke(messages) -> .content`, so swapping is a config
-change. The tense drift and the router's unreliability on project-named questions are
-both symptoms of the small model.
+Eval labels name specific chunk ids, so different documents need them rewritten by hand.
+That is deliberate — auto-generated labels would make the metrics meaningless.

@@ -37,14 +37,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.config import settings  # noqa: E402
+from app.config import RENTAL_CORPUS_DIR, settings  # noqa: E402
 from app.embeddings import CachedEmbedder, HashingEmbedder, OpenAIEmbedder  # noqa: E402
-from app.retriever import ResumeRetriever  # noqa: E402
+from app.retriever import PolicyRetriever  # noqa: E402
 
 K_VALUES = (1, 3, 5)
 
 
-def build_retriever(offline: bool, hybrid: bool, dense_weight: float = 0.5) -> ResumeRetriever:
+def build_retriever(offline: bool, hybrid: bool, dense_weight: float = 0.5) -> PolicyRetriever:
     if offline:
         embedder = HashingEmbedder()
     else:
@@ -54,10 +54,10 @@ def build_retriever(offline: bool, hybrid: bool, dense_weight: float = 0.5) -> R
             OpenAIEmbedder(settings.openai_api_key, settings.embedding_model, settings.embedding_dim),
             ROOT / "data/emb_cache.json",
         )
-    return ResumeRetriever.from_resume(ROOT / "data/resume.md", embedder, hybrid=hybrid, dense_weight=dense_weight)
+    return PolicyRetriever.from_corpus(RENTAL_CORPUS_DIR, embedder, hybrid=hybrid, dense_weight=dense_weight)
 
 
-def evaluate(retriever: ResumeRetriever, questions: list[dict], max_k: int = 5) -> dict:
+def evaluate(retriever: PolicyRetriever, questions: list[dict], max_k: int = 5) -> dict:
     answerable = [q for q in questions if q["relevant_chunks"]]
     unanswerable = [q for q in questions if not q["relevant_chunks"]]
 
@@ -127,7 +127,7 @@ def evaluate(retriever: ResumeRetriever, questions: list[dict], max_k: int = 5) 
     }
 
 
-def sweep(retriever: ResumeRetriever, questions: list[dict]) -> None:
+def sweep(retriever: PolicyRetriever, questions: list[dict]) -> None:
     """Pick MIN_SIMILARITY: the gate must admit answerable questions and reject the rest."""
     answerable = [q for q in questions if q["relevant_chunks"]]
     unanswerable = [q for q in questions if not q["relevant_chunks"]]
@@ -170,7 +170,7 @@ def main() -> int:
     mode = "dense + BM25 fusion" if args.hybrid else "dense only"
     print(f"embedder : {backend}")
     print(f"retrieval: {mode}")
-    print(f"corpus   : {len(retriever.chunks)} chunks from data/resume.md")
+    print(f"corpus   : {len(retriever.chunks)} chunks from {RENTAL_CORPUS_DIR.name}/")
 
     if args.sweep_weight:
         print("\nfusion weight sweep (dense_weight=1.0 is dense-only):")

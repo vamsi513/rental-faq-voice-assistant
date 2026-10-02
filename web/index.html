@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Resume Voice Agent</title>
+<title>Rental FAQ Voice Assistant</title>
 <style>
   :root {
     --bg: #ffffff; --fg: #1a1a1a; --muted: #6b6b6b; --line: #d8d8d8;
@@ -38,6 +38,17 @@
          background: var(--line); margin-right: 5px; vertical-align: 1px; }
   .dot.on { background: var(--ok); } .dot.busy { background: var(--warn); }
 
+  .badge {
+    display: inline-block; border: 1px solid var(--line); border-radius: 3px;
+    padding: 2px 7px; font-size: 12px; color: var(--muted); margin-bottom: 7px;
+  }
+  .samples { margin: 0 0 18px; padding: 0; list-style: none; display: flex;
+             flex-wrap: wrap; gap: 7px; }
+  .samples button {
+    background: transparent; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 14px; padding: 5px 12px; font-size: 13px; cursor: pointer;
+  }
+  .samples button:hover { border-color: var(--fg); }
   .note {
     border: 1px solid var(--line); border-left-width: 3px; padding: 10px 12px;
     margin: 16px 0; font-size: 13px; color: var(--muted); border-radius: 3px;
@@ -79,8 +90,13 @@
 </head>
 <body>
 <main>
-  <h1>Resume Voice Agent</h1>
-  <p class="sub">Ask about Vamsi Krishna Sadu's background. Answers come only from his resume.</p>
+  <h1>Rental FAQ Voice Assistant</h1>
+  <p class="sub">
+    <span class="badge">Personal prototype &middot; fictional sample property</span><br>
+    Ask about Maple Court Apartments &mdash; rent, lease, pets, parking, amenities or
+    maintenance. Answers come only from this property's sample documents. Maple Court
+    is not a real property and this assistant cannot see anyone's account.
+  </p>
 
   <div class="bar">
     <button id="call">Start call</button>
@@ -118,6 +134,9 @@
     </div>
     <div class="hint">The public key is safe in a browser by design. Never paste a private key here.</div>
   </div>
+
+  <h2>Try asking</h2>
+  <ul class="samples" id="samples"></ul>
 
   <h2>Transcript</h2>
   <div id="transcript"><div class="empty">Nothing yet.</div></div>
@@ -192,7 +211,7 @@ function addTurn(who, what, partial = false) {
 
 async function refreshDebug(id) {
   // Every value below is caller-controlled: the question comes from speech-to-text or
-  // the text box, and the passages come from the resume. They are written with
+  // the text box, and the passages come from the property documents. They are written
   // textContent, never innerHTML, so a caller saying something that looks like markup
   // cannot inject it into this page. (An earlier version interpolated them into an
   // innerHTML template, which was an XSS hole reachable from the public tunnel.)
@@ -224,6 +243,12 @@ async function refreshDebug(id) {
       ["thread", `${d.thread_id} · turn ${d.turn_index} · ${d.history_messages} msgs`],
       ["latency", `${d.latency_seconds}s`],
     ];
+    if (d.maintenance && d.maintenance.status) {
+      const m = d.maintenance;
+      rows.push(["maintenance", [m.status, m.unit && `unit ${m.unit}`,
+        m.ticket_id && `ticket ${m.ticket_id}`, m.error && `error: ${m.error}`]
+        .filter(Boolean).join(" \u00b7 ")]);
+    }
     for (const [k, v] of rows) kv.append(el("span", k), el("span", v));
     box.append(kv);
 
@@ -268,6 +293,28 @@ async function sendText() {
     setStatus("turn", "error");
   }
 }
+// Sample questions. Clicking one fills the box and sends it, so a reviewer can try the
+// prototype without having to guess what it covers.
+const SAMPLES = [
+  "What are the office hours?",
+  "How much is a two bedroom?",
+  "What is the pet fee?",
+  "Is that refundable?",
+  "Can I have a dog?",
+  "How does guest parking work?",
+  "What do I need to apply?",
+  "I want to report a leaking kitchen faucet",
+];
+for (const q of SAMPLES) {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = q;                       // textContent: never innerHTML
+  b.onclick = () => { $("msg").value = q; sendText(); };
+  li.append(b);
+  $("samples").append(li);
+}
+
 $("send").onclick = sendText;
 $("msg").onkeydown = (e) => { if (e.key === "Enter") sendText(); };
 
@@ -403,9 +450,9 @@ checkAccess();
 // Show the configured backend so the demo can prove which model and index are live.
 fetch("/health").then((r) => r.json()).then((h) => {
   $("setup").insertAdjacentHTML("beforeend",
-    `<div class="hint" style="margin-top:8px">Backend ready: ${h.chunks} resume chunks &middot;
+    `<div class="hint" style="margin-top:8px">Backend ready: ${h.chunks} policy chunks &middot;
      ${h.embedding_model} (${h.embedding_dim}d) &middot; ${h.chat_model} &middot;
-     checkpointer ${h.checkpointer}</div>`);
+     maintenance workflow ${h.n8n_configured ? "connected" : "not configured"}</div>`);
 }).catch(() => {});
 </script>
 </body>

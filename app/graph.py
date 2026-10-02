@@ -32,15 +32,16 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from app import maintenance as mx
 from app import prompts, scope
 from app.config import Settings
-from app.retriever import ResumeRetriever
+from app.retriever import PolicyRetriever
 
 log = logging.getLogger("agent.graph")
 
 Route = Literal[
-    "resume_question", "small_talk", "out_of_scope",
-    "fabrication", "injection", "missing_info", "needs_context",
+    "property_question", "maintenance", "emergency", "small_talk",
+    "out_of_scope", "fabrication", "injection", "missing_info", "needs_context",
 ]
 
 # A turn needs reference resolution only if it points at something unnamed.
@@ -52,13 +53,24 @@ Route = Literal[
 # reference word now has to be doing referential work -- pointing at a noun, or
 # standing alone as a pronoun subject.
 _REFERENTIAL = re.compile(
-    r"\b(it|its)\b"                                           # "what problem does it solve"
-    r"|\b(that|this|those|these|the)\s+"
-    r"(project|projects|one|ones|role|job|internship|company|paper|system|work|thing|tool)\b"
-    r"|\b(do|did|does|was|were|work|worked|study|studied|learn|learned|build|built|use|used)\b"
-    r"[^?.]{0,40}\bthere\b"                                    # "what did he do there"
+    # A bare pronoun as the subject of a question: "is that refundable?", "does it
+    # apply?". This is the common shape of a rental follow-up and the regex missed it
+    # entirely at first, so "is that refundable?" after "what is the pet fee?" retrieved
+    # the security-deposit section and answered about the wrong charge.
+    r"\b(is|are|was|were|does|do|did|can|could|will|would|should|has|have)\s+"
+    r"(that|this|those|these|it|they)\b"
+    r"|\b(it|its)\b"                                            # "what does it cover"
+    r"|\b(how much|what about|when is|where is)\s+(that|this|it|those)\b"
+    # A demonstrative pointing at a noun this corpus contains. "the" is deliberately
+    # NOT here: "what is the pet fee?" is a standalone question, and including it made
+    # every such question look referential and pay for a pointless rewrite call.
+    r"|\b(that|this|those|these)\s+"
+    r"(fee|fees|deposit|deposits|charge|charges|cost|price|rate|rates|policy|rule|rules"
+    r"|rent|lease|pet|pets|space|spaces|spot|unit|units|apartment|amenity|amenities"
+    r"|one|ones|option|options|plan|plans|floor\s?plan)\b"
+    r"|\b(of|about)\s+(those|them|that)\b"                      # "two of those"
     r"|\b(more about (it|that|this|them)|tell me more|what else|anything else)\b"
-    r"|\bthe (first|second|third|last) (one|project|role|job)\b",
+    r"|\bthe (first|second|third|last) (one|option|plan)\b",
     re.I,
 )
 
@@ -90,6 +102,11 @@ class AgentState(TypedDict, total=False):
     evidence: list[dict]  # debug-shaped retrieved chunks, best first
     top_dense_score: float
 
+    # --- maintenance request (persists across turns, like `messages`) --------
+    # Deliberately NOT reset by `sanitize`: a request is collected over several turns
+    # and must survive until it is submitted, cancelled, or the call ends.
+    maintenance: dict
+
     # --- output ------------------------------------------------------------
     answer: str
     node_timings: dict[str, float]
@@ -97,9 +114,10 @@ class AgentState(TypedDict, total=False):
 
 # Capitalised words the rewriter may always use: they refer to the subject, not to a
 # project or employer it would have to have found in the conversation.
-_ALWAYS_ALLOWED = {"vamsi", "krishna", "sadu", "he", "his", "him", "what", "which",
-                   "who", "where", "when", "how", "why", "did", "does", "is", "are",
-                   "tell", "the", "in", "and", "of", "a", "an", "do", "can", "was"}
+_ALWAYS_ALLOWED = {"maple", "court", "apartments", "i", "my", "we", "our", "you",
+                   "what", "which", "who", "where", "when", "how", "why", "did",
+                   "does", "is", "are", "tell", "the", "in", "and", "of", "a", "an",
+                   "do", "can", "was", "it", "that", "this"}
 
 
 def _invented_entities(rewritten: str, history: list[AnyMessage], question: str) -> list[str]:
@@ -114,6 +132,21 @@ def _invented_entities(rewritten: str, history: list[AnyMessage], question: str)
     return sorted(set(out))
 
 
+def _parse_extraction(raw: str) -> tuple[str | None, str | None]:
+    """Read the two-line UNIT/ISSUE reply. NONE and empties become None."""
+    unit = issue = None
+    for line in (raw or "").splitlines():
+        key, _, value = line.partition(":")
+        value = value.strip().strip('"')
+        if not value or value.upper() == "NONE":
+            continue
+        if key.strip().upper() == "UNIT":
+            unit = value
+        elif key.strip().upper() == "ISSUE":
+            issue = value
+    return unit, issue
+
+
 def _history(messages: list[AnyMessage], limit: int) -> str:
     """Render the last `limit` messages as plain transcript for the router/rewriter."""
     recent = messages[-limit:] if limit else messages
@@ -124,12 +157,12 @@ def _history(messages: list[AnyMessage], limit: int) -> str:
     return "\n".join(lines) if lines else "(start of call)"
 
 
-def _coverage_outline(retriever: ResumeRetriever) -> str:
+def _coverage_outline(retriever: PolicyRetriever) -> str:
     """Section -> entry titles, built from the indexed chunks.
 
-    The router sees this so it can tell "tell me about AgentIQ" (a project of his) from
-    "tell me about Kubernetes" (not his). Titles only: the router must not be able to
-    answer from it, only to recognise names. Regenerates itself if the resume changes.
+    The router sees this so it can tell "what's the pet policy" (covered here) from
+    "what are rents like in Chicago" (not). Titles only: the router must not be able to
+    answer from it, only to recognise topics. Regenerates if the documents change.
     """
     grouped: dict[str, list[str]] = {}
     for chunk in retriever.chunks:
@@ -142,8 +175,18 @@ def _coverage_outline(retriever: ResumeRetriever) -> str:
     return "\n".join(lines)
 
 
-def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkpointer: Any):
-    """Compile the workflow. `llm` is anything with `.invoke(messages) -> .content`."""
+def build_graph(
+    retriever: PolicyRetriever,
+    llm: Any,
+    settings: Settings,
+    checkpointer: Any,
+    http_client: Any = None,
+):
+    """Compile the workflow.
+
+    `llm` is anything with `.invoke(messages) -> .content`. `http_client` is an optional
+    shared httpx.AsyncClient for the n8n call; tests pass a transport-mocked one.
+    """
     outline = _coverage_outline(retriever)
 
     def _call(system: str, user: str, max_tokens: int, temperature: float) -> str:
@@ -194,7 +237,23 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
         # that happens to contain a referential phrase ("tell me about the first
         # person") would otherwise be routed as an ambiguous follow-up and never
         # reach the injection check at all.
-        if scope.is_pleasantry(question):
+        pending = mx.MaintenanceRequest.from_state(state.get("maintenance"))
+
+        if mx.is_emergency(question):
+            # Read the documented emergency instruction instead of offering the routine
+            # workflow. Never improvised, never routed through a model.
+            update |= {"route": "emergency", "route_reason": "emergency keywords matched"}
+        elif pending.status == "awaiting_confirmation" and mx.answers_pending_confirmation(question):
+            # The caller is answering "should I submit this?". "Yes" would otherwise
+            # classify as small talk and the confirmation would be lost. Only turns that
+            # actually answer are captured: a pending request must not hijack an
+            # unrelated question asked while it waits.
+            update |= {"route": "maintenance", "route_reason": "answering a pending confirmation"}
+        elif pending.status == "submitted" and mx.is_confirmation(question):
+            # A repeated "yes" after submission, or Vapi re-delivering the turn. Routed
+            # here so the node can say it is already done rather than starting over.
+            update |= {"route": "maintenance", "route_reason": "confirmation after submit"}
+        elif scope.is_pleasantry(question):
             # Decided here so a greeting cannot be read as an ambiguous follow-up.
             update |= {"route": "small_talk", "route_reason": "whole turn is a pleasantry"}
         elif injection:
@@ -202,10 +261,10 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
         elif fabrication:
             update |= {"route": "fabrication", "route_reason": f"pattern match: {flags}"}
         elif uncovered:
-            # Asked about Vamsi, but on a topic a one-page resume provably does not
-            # cover (work authorisation, salary, clearance, references, contact
-            # details). That is "relevant but missing", not "unrelated", and no
-            # retrieval or generation can change it.
+            # About this property, but on a topic the documents provably do not cover
+            # (an individual's balance, application status, lease dates, availability).
+            # That is "relevant but missing", not "unrelated", and no retrieval or
+            # generation can change it.
             update |= {"route": "missing_info",
                        "route_reason": f"topic not covered by a resume: {flags}"}
         return update
@@ -291,16 +350,17 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
             # router outage degrades to "retrieve and let grounding decide", not to
             # answering from world knowledge.
             log.exception("router failed; defaulting to resume_question")
-            return {"route": "resume_question", "route_reason": "router error, defaulted",
+            return {"route": "property_question", "route_reason": "router error, defaulted",
                     "node_timings": {"classify_error": time.perf_counter() - started}}
 
         mapping = {
-            "RESUME_QUESTION": "resume_question",
+            "PROPERTY_QUESTION": "property_question",
+            "MAINTENANCE_REQUEST": "maintenance",
             "SMALL_TALK": "small_talk",
             "FABRICATION_REQUEST": "fabrication",
             "OUT_OF_SCOPE": "out_of_scope",
         }
-        route = next((v for k, v in mapping.items() if k in label), "resume_question")
+        route = next((v for k, v in mapping.items() if k in label), "property_question")
         return {
             "route": route,
             "route_reason": f"router returned {label!r}",
@@ -325,7 +385,7 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
             # the refusal standing and drop the evidence so the debug panel doesn't
             # imply the agent nearly answered.
             if top >= settings.high_confidence_similarity:
-                update["route"] = "resume_question"
+                update["route"] = "property_question"
                 update["route_reason"] = (
                     f"router said out_of_scope, overruled: top dense score {top:.3f} "
                     f">= {settings.high_confidence_similarity}"
@@ -363,7 +423,7 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
             log.exception("generation failed")
             return {
                 "answer": "Sorry, I had trouble with that. Could you ask again?",
-                "route": "resume_question",
+                "route": "property_question",
                 "route_reason": "generation error",
                 "node_timings": {"generate_error": time.perf_counter() - started},
             }
@@ -403,8 +463,117 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
             )
         except Exception:
             log.exception("small talk generation failed")
-            answer = "Happy to help. Ask me about Vamsi's projects, education, skills or experience."
+            answer = ("Happy to help. Ask me about rent, the lease, pets, parking, "
+                      "amenities or maintenance.")
         return {"answer": answer, "node_timings": {"small_talk": time.perf_counter() - started}}
+
+    async def maintenance(state: AgentState) -> dict:
+        """Collect, confirm, submit. The only node that leaves the process.
+
+        Three rules make this safe to demo:
+          * Submission happens only on an explicit confirmation matched by pattern, not
+            by a model's judgement (`mx.is_confirmation`).
+          * Success is announced only after n8n returns a validated 2xx with a ticket.
+          * A `request_id` already in `submitted_ids` is never sent again, so a repeated
+            "yes" or a duplicate delivery from Vapi cannot create a second ticket.
+        """
+        started = time.perf_counter()
+        question = state.get("question", "")
+        pending = mx.MaintenanceRequest.from_state(state.get("maintenance"))
+
+        # --- answering "should I submit this?" ------------------------------
+        if pending.status == "awaiting_confirmation":
+            if mx.is_decline(question):
+                pending.status = "cancelled"
+                return {"maintenance": pending.to_state(), "answer": prompts.CANCELLED,
+                        "route": "maintenance", "route_reason": "caller declined",
+                        "node_timings": {"maintenance": time.perf_counter() - started}}
+
+            if mx.is_confirmation(question):
+                if pending.already_submitted:
+                    # A repeated "yes", or Vapi delivering the same turn twice.
+                    return {"maintenance": pending.to_state(),
+                            "answer": prompts.ALREADY_SUBMITTED.format(ticket_id=pending.ticket_id),
+                            "route": "maintenance", "route_reason": "duplicate confirmation ignored",
+                            "node_timings": {"maintenance": time.perf_counter() - started}}
+
+                result = await mx.submit_to_n8n(
+                    pending, state.get("call_id", ""),
+                    webhook_url=settings.n8n_webhook_url,
+                    secret=settings.n8n_webhook_secret,
+                    header_name=settings.n8n_header_name,
+                    timeout=settings.n8n_timeout_seconds,
+                    client=http_client,
+                )
+                if result.ok:
+                    pending.status = "submitted"
+                    pending.ticket_id = result.ticket_id
+                    pending.submitted_ids = [*pending.submitted_ids, pending.request_id]
+                    answer = prompts.submitted_reply(result.ticket_id or "")
+                    reason = f"n8n accepted: {result.ticket_id}"
+                else:
+                    # Mark failed and do NOT retry: n8n may already have the request.
+                    pending.status = "failed"
+                    pending.error = result.error
+                    answer = prompts.SUBMIT_FAILED
+                    reason = f"n8n failed: {result.error}"
+                    log.warning("maintenance submit failed id=%s: %s", pending.request_id, result.error)
+                return {"maintenance": pending.to_state(), "answer": answer,
+                        "route": "maintenance", "route_reason": reason,
+                        "node_timings": {"maintenance": time.perf_counter() - started}}
+            # Neither yes nor no: fall through to re-extract, in case they corrected a
+            # detail ("actually it's 3C"), then re-confirm.
+
+        # A bare "yes" AFTER a successful submit is the caller repeating themselves, or
+        # Vapi re-delivering the turn. Without this it falls through to collection,
+        # re-extracts the same details from history and asks for confirmation again --
+        # which does not duplicate the ticket, but is confusing and invites a second
+        # "yes" that would.
+        if pending.status == "submitted" and mx.is_confirmation(question):
+            return {"maintenance": pending.to_state(),
+                    "answer": prompts.ALREADY_SUBMITTED.format(ticket_id=pending.ticket_id),
+                    "route": "maintenance", "route_reason": "confirmation after submit ignored",
+                    "node_timings": {"maintenance": time.perf_counter() - started}}
+
+        # --- collecting details ---------------------------------------------
+        if pending.status in ("idle", "submitted", "cancelled", "failed"):
+            pending.start()
+
+        try:
+            extracted = _call(
+                prompts.MAINTENANCE_EXTRACT_SYSTEM,
+                prompts.MAINTENANCE_EXTRACT_USER.format(
+                    history=_history(state.get("messages", []), settings.max_history_turns * 2),
+                    unit=pending.unit or "NONE", issue=pending.issue or "NONE",
+                    question=question,
+                ),
+                max_tokens=90, temperature=0.0,
+            )
+        except Exception:
+            log.exception("maintenance extraction failed")
+            extracted = ""
+
+        unit, issue = _parse_extraction(extracted)
+        if unit:
+            pending.unit = unit
+        if issue:
+            pending.issue = issue
+
+        if not pending.ready:
+            pending.status = "collecting"
+            answer = prompts.ASK_UNIT if pending.issue else prompts.ASK_ISSUE
+            return {"maintenance": pending.to_state(), "answer": answer,
+                    "route": "maintenance", "route_reason": "details incomplete",
+                    "node_timings": {"maintenance": time.perf_counter() - started}}
+
+        pending.status = "awaiting_confirmation"
+        return {"maintenance": pending.to_state(), "answer": pending.summary(),
+                "route": "maintenance", "route_reason": "read back, awaiting confirmation",
+                "node_timings": {"maintenance": time.perf_counter() - started}}
+
+    def emergency(state: AgentState) -> dict:
+        """Documented emergency instructions, verbatim. No model call, no improvising."""
+        return {"answer": mx.EMERGENCY_REPLY, "node_timings": {"emergency": 0.0}}
 
     def refuse(state: AgentState) -> dict:
         """Fixed strings. No model call, so a refusal is instant and cannot drift."""
@@ -427,6 +596,7 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
     for name, fn in (
         ("sanitize", sanitize), ("interpret", interpret), ("classify", classify),
         ("retrieve", retrieve), ("generate", generate), ("small_talk", small_talk),
+        ("maintenance", maintenance), ("emergency", emergency),
         ("refuse", refuse), ("record", record),
     ):
         graph.add_node(name, fn)
@@ -437,10 +607,14 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
 
     def after_classify(state: AgentState) -> str:
         route = state.get("route", "out_of_scope")
-        if route == "resume_question":
+        if route == "property_question":
             return "retrieve"
         if route == "small_talk":
             return "small_talk"
+        if route == "maintenance":
+            return "maintenance"
+        if route == "emergency":
+            return "emergency"
         if route == "out_of_scope":
             # Go through retrieval anyway so a high-confidence hit can overrule the
             # router. Costs one embedding call. Only the router's opinion is appealable
@@ -451,17 +625,18 @@ def build_graph(retriever: ResumeRetriever, llm: Any, settings: Settings, checkp
 
     graph.add_conditional_edges(
         "classify", after_classify,
-        {"retrieve": "retrieve", "small_talk": "small_talk", "refuse": "refuse"},
+        {"retrieve": "retrieve", "small_talk": "small_talk", "refuse": "refuse",
+         "maintenance": "maintenance", "emergency": "emergency"},
     )
 
     def after_retrieve(state: AgentState) -> str:
         # retrieve may have flipped the route either way: down to missing_info via the
         # backstop, or up from out_of_scope on a high-confidence hit.
-        return "generate" if state.get("route") == "resume_question" else "refuse"
+        return "generate" if state.get("route") == "property_question" else "refuse"
 
     graph.add_conditional_edges("retrieve", after_retrieve, {"refuse": "refuse", "generate": "generate"})
 
-    for node in ("generate", "small_talk", "refuse"):
+    for node in ("generate", "small_talk", "maintenance", "emergency", "refuse"):
         graph.add_edge(node, "record")
     graph.add_edge("record", END)
 

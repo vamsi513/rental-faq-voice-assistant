@@ -1,6 +1,6 @@
-"""Retrieval over the resume: dense cosine, optionally fused with BM25.
+"""Retrieval over the property documents: dense cosine, optionally fused with BM25.
 
-Brute-force numpy over 10 chunks. An approximate index (FAISS, Qdrant) would add a
+Brute-force numpy over ~45 chunks. An approximate index (FAISS, Qdrant) would add a
 dependency and a failure mode to speed up a 10x1536 dot product that takes
 microseconds -- so it isn't here. The interface is the one a vector DB would sit
 behind if the corpus grew.
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from app.chunking import Chunk, parse_resume
+from app.chunking import Chunk, parse_corpus
 from app.embeddings import Embedder
 
 RRF_K = 60  # standard Reciprocal Rank Fusion constant
@@ -37,6 +37,7 @@ class Evidence:
         return {
             "chunk_id": self.chunk.chunk_id,
             "citation": self.chunk.citation,
+            "source": self.chunk.source,
             "score": round(self.score, 4),
             "dense_score": round(self.dense_score, 4),
             "text": self.chunk.text,
@@ -89,7 +90,7 @@ class BM25:
         return out
 
 
-class ResumeRetriever:
+class PolicyRetriever:
     def __init__(
         self,
         chunks: list[Chunk],
@@ -109,14 +110,14 @@ class ResumeRetriever:
         self._bm25 = BM25([c.text for c in chunks]) if hybrid else None
 
     @classmethod
-    def from_resume(
+    def from_corpus(
         cls,
         path: Path,
         embedder: Embedder,
         hybrid: bool = True,
         dense_weight: float = 0.5,
-    ) -> ResumeRetriever:
-        return cls(parse_resume(path), embedder, hybrid=hybrid, dense_weight=dense_weight)
+    ) -> PolicyRetriever:
+        return cls(parse_corpus(path), embedder, hybrid=hybrid, dense_weight=dense_weight)
 
     def search(self, query: str, k: int) -> list[Evidence]:
         if not query.strip() or not self.chunks:

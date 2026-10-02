@@ -23,3 +23,4 @@ data/emb_cache.json
 # Personal prep notes for demoing this. Kept locally, not published.
 DEMO_CARD.md
 WALKTHROUGH.md
+.DS_Store

@@ -30,8 +30,8 @@ class StubGraph:
 
     async def ainvoke(self, payload, config):
         self.seen.append((config["configurable"]["thread_id"], payload["question"]))
-        return {"answer": f"answered: {payload['question']}", "route": "resume_question",
-                "evidence": [], "top_dense_score": 0.5, "messages": []}
+        return {"answer": f"answered: {payload['question']}", "route": "property_question",
+                "evidence": [], "top_dense_score": 0.5, "messages": [], "maintenance": {}}
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def vapi_body(**overrides):
         "call": {"id": "vapi-call-1"},
         "messages": [
             {"role": "system", "content": "(vapi prompt)"},
-            {"role": "user", "content": "What is AgentIQ?"},
+            {"role": "user", "content": "What is the pet fee?"},
         ],
     }
     body.update(overrides)
@@ -120,7 +120,7 @@ def test_separate_calls_get_separate_threads(client):
     client.post("/chat/completions", json=vapi_body(stream=False))
     client.post("/chat/completions", json=vapi_body(
         stream=False, call={"id": "vapi-call-2"},
-        messages=[{"role": "user", "content": "What is EvalForge?"}]))
+        messages=[{"role": "user", "content": "What are the office hours?"}]))
     threads = {thread for thread, _ in client.graph.seen}
     assert threads == {"vapi-call:vapi-call-1", "vapi-call:vapi-call-2"}
 
@@ -140,7 +140,7 @@ def test_falls_back_to_call_messages(client):
     body = vapi_body(stream=False)
     body["call"]["messages"] = body.pop("messages")
     client.post("/chat/completions", json=body)
-    assert client.graph.seen[-1][1] == "What is AgentIQ?"
+    assert client.graph.seen[-1][1] == "What is the pet fee?"
 
 
 def test_content_parts_form_is_tolerated(client):
@@ -207,7 +207,7 @@ def test_debug_last_exposes_evidence_per_call(client):
     client.post("/chat/completions", json=vapi_body(stream=False))
     debug = client.get("/debug/last", params={"call_id": "vapi-call-1"}).json()
     assert debug["thread_id"] == "vapi-call:vapi-call-1"
-    assert debug["route"] == "resume_question"
+    assert debug["route"] == "property_question"
 
 
 def test_health_reports_the_live_configuration(client):
@@ -339,3 +339,26 @@ def test_session_detail_moved_behind_the_secret(secured):
     assert "sessions" in body and "config" in body
     # Even here the checkpoint path is reduced to a filename.
     assert "/" not in body["config"]["checkpoint_db"]
+
+
+# --- the prototype must not leak the n8n credential or URL ---------------------
+
+def test_health_does_not_publish_the_webhook_url(client):
+    body = client.get("/health").json()
+    # Whether a workflow is wired up is useful; where it lives is not public.
+    assert "n8n_configured" in body
+    assert not any("webhook" in str(v).lower() or "http" in str(v) for v in body.values())
+
+
+def test_debug_payload_exposes_maintenance_status_but_no_secret(client):
+    client.post("/chat/completions", json=vapi_body(stream=False))
+    debug = client.get("/debug/last", params={"call_id": "vapi-call-1"}).json()
+    assert "maintenance" in debug
+    blob = str(debug).lower()
+    assert "secret" not in blob and "webhook" not in blob
+
+
+def test_prototype_notice_is_served(client):
+    body = client.get("/health").json()
+    assert "prototype" in body["notice"].lower()
+    assert body["property"] == "Maple Court Apartments"

@@ -11,6 +11,9 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
+# The knowledge base. Every document in here describes one fictional property; see
+# data/rental/00-about-this-corpus.md.
+RENTAL_CORPUS_DIR = DATA_DIR / "rental"
 
 
 @dataclass(frozen=True)
@@ -35,26 +38,25 @@ class Settings:
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     embedding_dim: int = 1536
     top_k: int = int(os.getenv("TOP_K", "3"))
-    # Dense cosine is fused with a small BM25 signal by weighted RRF. 0.8 beat
-    # dense-only on every metric (R@1 .690->.759, MRR .816->.863, R@5 .966->1.000);
-    # equal weighting regressed education queries. Swept: --sweep-weight.
+    # Dense cosine fused with a small BM25 signal by weighted RRF. Re-swept on the
+    # rental corpus (--sweep-weight): 0.9 beat dense-only on Hit@1 (.882 -> .902) and
+    # MRR (.925 -> .938) with Hit@3 level. The previous value of 0.8 was tuned on a
+    # different corpus and is slightly worse here -- a reminder that this constant
+    # belongs to the documents, not to the code.
     hybrid_retrieval: bool = os.getenv("HYBRID_RETRIEVAL", "true").lower() == "true"
-    dense_weight: float = float(os.getenv("DENSE_WEIGHT", "0.8"))
-    # A deliberately LOW backstop, not the scope decision. On the eval set the weakest
-    # answerable question scores 0.178 and the strongest off-topic one 0.173 -- the
-    # distributions nearly touch, so no threshold can separate them reliably. 0.12 sits
-    # safely under every answerable question (it never blocks a real one) while still
-    # rejecting ~60% of off-topic ones for free. The router and the generator's
-    # no-evidence sentinel do the actual scope work. See README "Scope enforcement".
-    min_similarity: float = float(os.getenv("MIN_SIMILARITY", "0.12"))
-    # The other end of the same measurement. Off-topic questions never scored above
-    # 0.173 on the eval set, while answerable ones average 0.406. So a score this high
-    # is strong evidence the resume really does cover the question -- enough to overrule
-    # the router when it calls something out of scope. This exists because the router is
-    # a single LLM call and measurably unreliable on questions that name a project
-    # without naming Vamsi ("What did TriageTune find?" was misrouted ~50% of the time).
-    # The two signals now check each other instead of the router deciding alone.
-    high_confidence_similarity: float = float(os.getenv("HIGH_CONFIDENCE_SIMILARITY", "0.35"))
+    dense_weight: float = float(os.getenv("DENSE_WEIGHT", "0.9"))
+    # A deliberately LOW backstop, not the scope decision. On the rental eval set the
+    # weakest answerable question scores 0.272 and the strongest off-topic one 0.354 --
+    # they OVERLAP, so no threshold separates them. 0.23 sits under every answerable
+    # question (it never blocks a real one) while still rejecting ~83% of off-topic ones
+    # for free. The router and the generator's no-evidence sentinel do the real work.
+    min_similarity: float = float(os.getenv("MIN_SIMILARITY", "0.23"))
+    # The other end of the same measurement. Off-topic questions reached 0.354 on the
+    # rental eval set, so this sits clear of that: a score this high is strong evidence
+    # the documents really do cover the question -- enough to overrule the router when
+    # it calls something out of scope. The two signals check each other rather than the
+    # router deciding alone.
+    high_confidence_similarity: float = float(os.getenv("HIGH_CONFIDENCE_SIMILARITY", "0.45"))
 
     # --- Conversation / session -------------------------------------------
     # Bound on history replayed into the model. Keeps prompt size and latency flat
@@ -80,15 +82,39 @@ class Settings:
     vapi_public_key: str = os.getenv("VAPI_PUBLIC_KEY", "")
     vapi_assistant_id: str = os.getenv("VAPI_ASSISTANT_ID", "")
 
+    # --- n8n maintenance workflow -----------------------------------------
+    # The PRODUCTION webhook URL from the n8n Webhook node. n8n's *test* URL only
+    # accepts one request while the editor is listening, so it is useless here.
+    n8n_webhook_url: str = os.getenv("N8N_WEBHOOK_URL", "")
+    # Shared credential sent as a header. Not a user credential and not authentication
+    # of any person -- it only proves the caller is this backend.
+    n8n_webhook_secret: str = field(default=os.getenv("N8N_WEBHOOK_SECRET", ""), repr=False)
+    n8n_header_name: str = os.getenv("N8N_HEADER_NAME", "X-Prototype-Secret")
+    # A voice caller is waiting, so this is short. A timeout is NOT retried: n8n may
+    # already have created the ticket, and a blind retry would duplicate it.
+    n8n_timeout_seconds: float = float(os.getenv("N8N_TIMEOUT_SECONDS", "8"))
+
+    @property
+    def n8n_configured(self) -> bool:
+        return bool(self.n8n_webhook_url)
+
 
 settings = Settings()
 
 GREETING = (
-    "Hi, I'm Vamsi's portfolio assistant. "
-    "You can ask me about his projects, education, skills or experience."
+    "Hi, this is the Maple Court Apartments sample assistant. "
+    "I can answer questions about rent, pets, parking, amenities, or maintenance. "
+    "This is a demo property, so I can't look up anyone's account."
 )
+
+# Shown in the UI and stated by the assistant when asked what it is.
+PROTOTYPE_NOTICE = "Personal prototype - fictional sample property"
+PROPERTY_NAME = "Maple Court Apartments"
 
 # Exact phrasing the agent uses for the two refusal classes. Tests assert on
 # meaning rather than these strings, but keeping them here stops them drifting.
-MISSING_INFO_REPLY = "The resume doesn't provide that detail."
-OUT_OF_SCOPE_REPLY = "I can help with questions about Vamsi's background and projects."
+MISSING_INFO_REPLY = "I don't have that in the property documents."
+OUT_OF_SCOPE_REPLY = (
+    "I can help with questions about Maple Court's rent, lease, pets, parking, "
+    "amenities or maintenance."
+)

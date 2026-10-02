@@ -1,6 +1,6 @@
-"""Rebuild the knowledge source after the resume changes.
+"""Rebuild the index after the property documents change.
 
-Run this whenever data/resume_source.pdf or data/resume.md is edited:
+Run this whenever anything in data/rental/ is edited:
 
     python scripts/rebuild.py
 
@@ -22,21 +22,20 @@ sys.path.insert(0, str(ROOT))
 
 
 def main() -> int:
-    from app.chunking import parse_resume, write_chunks
+    from app.chunking import parse_corpus, write_chunks
 
-    print("1. verifying data/resume.md against data/resume_source.pdf")
-    verify = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/verify_source.py")], capture_output=True, text=True
+    print("1. checking the corpus for contradictions")
+    check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check_corpus.py")], capture_output=True, text=True
     )
-    print("   " + verify.stdout.strip().replace("\n", "\n   "))
-    if verify.returncode != 0:
-        print("\n   Source verification FAILED. Fix resume.md (or declare the rewording")
-        print("   in ALLOWED_EDITS) before rebuilding -- the agent must not state a fact")
-        print("   the PDF does not contain.")
+    print("   " + check.stdout.strip().replace("\n", "\n   "))
+    if check.returncode != 0:
+        print("\n   Corpus check FAILED. Fix data/rental/ before rebuilding -- the agent")
+        print("   can only be as consistent as these documents are.")
         return 1
 
     print("\n2. chunking")
-    chunks = parse_resume(ROOT / "data/resume.md")
+    chunks = parse_corpus(ROOT / "data/rental")
     write_chunks(chunks, ROOT / "data/chunks.json")
     for c in chunks:
         print(f"   [{len(c.text):5d} ch] {c.chunk_id:<46} {c.citation[:60]}")
@@ -67,7 +66,7 @@ def main() -> int:
         print("   every labelled chunk exists and every chunk is covered")
 
     print("\n5. next steps")
-    print("   - fix any stale labels above, then: python eval/run_retrieval_eval.py --hybrid --dense-weight 0.8")
+    print("   - fix any stale labels above, then: python eval/run_retrieval_eval.py --hybrid --dense-weight 0.9")
     print("   - re-sweep if retrieval looks worse:  python eval/run_retrieval_eval.py --sweep-weight")
     print("   - start the server, then:             python eval/run_grounding_eval.py")
     return 1 if (dangling or unlabelled) else 0
