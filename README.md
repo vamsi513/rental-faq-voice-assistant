@@ -403,6 +403,29 @@ floor.** Reproduce with `python scripts/measure_ws_latency.py --n 20`.
 
 ---
 
+## TypeScript client
+
+`client/` holds a Node and TypeScript terminal client for the socket. It exists
+because the socket is the interesting surface and a second implementation proves the
+protocol is a protocol, not just whatever the browser page happens to do.
+
+```bash
+cd client && npm install && npm run build
+RENTAL_WS_SECRET=your-key node dist/cli.js --url ws://127.0.0.1:8000/ws/chat
+```
+
+It handles the cases a naive client gets wrong: `reset` retracting an answer already
+on screen, a rate limit refusal that leaves the socket open, and reattaching to a
+thread after a drop. Strict TypeScript, type-aware ESLint, and 15 tests that drive it
+against a real `ws` server on an ephemeral port rather than a stubbed socket. See
+[client/README.md](client/README.md).
+
+Verified against the running Python server: 35 streamed deltas on one answer, a
+follow up resolved against the previous turn, an off topic question refused, and a
+reconnect resuming the same thread.
+
+---
+
 ## Connecting Vapi
 
 Expose the server over HTTPS, then create the assistant:
@@ -556,6 +579,7 @@ n8n/        importable workflow (no credentials)
 scripts/    check_corpus · rebuild · create_assistant · mock_n8n · measure_latency ·
             measure_ws_latency
 web/        the browser call page
+client/     Node and TypeScript terminal client for the socket, 15 tests
 tests/      265 offline tests
 ```
 

@@ -38,3 +38,36 @@ jobs:
 
       - name: Corpus consistency
         run: python scripts/check_corpus.py
+
+  client:
+    name: TypeScript client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        # Drives the client against a real ws server on an ephemeral port. No
+        # network beyond loopback and no API key.
+        run: npm test
+
+      - name: Build
+        run: npm run build
