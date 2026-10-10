@@ -1,0 +1,51 @@
+# One command local n8n for proving the maintenance workflow end to end.
+#
+#   docker compose -f docker-compose.n8n.yml up -d
+#   python scripts/file_demo_ticket.py
+#
+# The workflow JSON is mounted read only and imported on start, so there is nothing
+# to click. The shared credential is passed as an environment variable, which is what
+# the workflow's Code node reads, so no credential is baked into the committed JSON.
+services:
+  n8n:
+    image: n8nio/n8n:1.68.0
+    container_name: rental-demo-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      # Local demo only. Auth is off because nothing here is exposed beyond localhost
+      # and the webhook itself checks the shared credential below.
+      N8N_BASIC_AUTH_ACTIVE: "false"
+      N8N_SECURE_COOKIE: "false"
+      N8N_HOST: localhost
+      N8N_PORT: "5678"
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: UTC
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      # The Code node reads this. Override it and set the same value in your .env as
+      # N8N_WEBHOOK_SECRET. The default is a throwaway for local use.
+      PROTOTYPE_SECRET: ${N8N_WEBHOOK_SECRET:-local-demo-secret}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+    # Import the workflow on every start, then run normally. --separate keeps the
+    # import idempotent across restarts instead of stacking duplicates.
+    # Import, activate, then start, in that order. Activation has to happen before
+    # the server comes up: n8n says so itself if you try afterwards, and an inactive
+    # workflow means the production webhook URL returns 404. --separate wants a
+    # directory, not a file, and re-importing the same id is idempotent.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        n8n import:workflow --separate --input=/workflows || echo "import skipped";
+        n8n update:workflow --all --active=true || echo "activation skipped";
+        exec n8n start
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  n8n_data:

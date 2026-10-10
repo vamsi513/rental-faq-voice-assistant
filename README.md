@@ -222,6 +222,27 @@ and nobody is dispatched.**
 
 ### Setting up n8n
 
+**One command, locally.** This is the fastest way to prove the whole path:
+
+```bash
+docker compose -f docker-compose.n8n.yml up -d     # imports and activates the workflow
+# put these in .env, then start the API
+#   N8N_WEBHOOK_URL=http://localhost:5678/webhook/maintenance
+#   N8N_WEBHOOK_SECRET=local-demo-secret
+uvicorn app.server:app --port 8000
+python scripts/file_demo_ticket.py
+```
+
+`file_demo_ticket.py` drives the real graph over the text endpoint: it reports a
+leaking faucet, gives a unit, confirms, and prints the ticket n8n returned. It exits
+non zero if nothing was accepted, so it works as a smoke check.
+
+The compose file imports the workflow and activates it before n8n starts. Activation
+matters: an inactive workflow makes the production webhook URL return 404, and n8n
+refuses to activate once it is already running.
+
+**Against your own n8n instance:**
+
 1. **Import** `n8n/maintenance-workflow.json` (Workflows → Import from File). It contains
    no credentials.
 2. **Set the shared secret inside n8n** as an environment variable named
@@ -472,18 +493,20 @@ on each push, so the count above is verifiable rather than claimed.
 
 | | |
 |---|---|
-| **Verified locally, mocked** | 231 tests; retrieval and grounding evals; the n8n client against `httpx.MockTransport` for success, timeout, non-2xx, malformed body and mismatched request id |
+| **Verified locally, mocked** | 265 tests; retrieval and grounding evals; the n8n client against `httpx.MockTransport` for success, timeout, non-2xx, malformed body and mismatched request id |
 | **Verified locally, real HTTP** | The full collect → confirm → submit flow against `scripts/mock_n8n.py` over real HTTP, including duplicate confirmations creating exactly one ticket, corrections, declines, and all three failure modes |
 | **Verified on the running server** | Rental FAQs, the "is that refundable?" follow-up, all refusal classes, session isolation between two call ids, the Vapi SSE contract with a real `call` object |
-| **NOT verified** | **No live n8n instance.** No real n8n workflow has received a request from this backend. **No live Vapi voice call** has been made against the rental assistant, the voice path is unchanged from a version that was verified on live calls, but it has not been re-tested since the adaptation |
+| **Verified against a real n8n** | A local n8n 1.68.0 started from `docker-compose.n8n.yml` imported and activated the committed workflow, and `scripts/file_demo_ticket.py` filed a ticket end to end through the graph: the production webhook returned `{"status":"accepted","ticket_id":"DEMO-M15H8D"}`, and a wrong shared secret was rejected with 401. This was a local container, not a hosted n8n, and no person was notified by it |
+| **NOT verified** | **No live Vapi voice call** has been made against the rental assistant, the voice path is unchanged from a version that was verified on live calls, but it has not been re-tested since the adaptation |
 
 ---
 
 ## Limitations
 
-1. **n8n is unverified end to end.** Everything is tested against a mock that implements
-   the same contract. Importing the workflow and pointing `N8N_WEBHOOK_URL` at it is the
-   remaining step.
+1. **n8n was verified against a local container, not a hosted instance.** A real n8n
+   accepted a request and returned a ticket, but it was `docker-compose.n8n.yml` on the
+   same machine. Nothing is deployed, and a demo ticket means the workflow replied, not
+   that anyone was notified.
 2. **No live voice call since the adaptation.** The Vapi integration is structurally
    unchanged and its HTTP contract is tested, but it has not been spoken to.
 3. **Thresholds are tuned on the set they are measured on**: 51 answerable questions, no
