@@ -57,7 +57,7 @@ token by token — every behaviour below is demonstrable with no spend and no pu
 ### Checks
 
 ```bash
-pytest -q                                                       # 253 offline tests
+pytest -q                                                       # 265 offline tests
 python scripts/check_corpus.py                                  # corpus contradictions
 python eval/run_retrieval_eval.py --hybrid --dense-weight 0.9   # Hit@k, Recall@k, MRR
 python eval/run_grounding_eval.py --base http://127.0.0.1:8000  # 33 behavioural cases
@@ -242,7 +242,8 @@ Every frame is a JSON object with a `type`.
 
 | Frame | Meaning |
 |---|---|
-| `{"type":"auth","secret":"..."}` | First frame. Required whenever `SERVER_SECRET` is set. |
+| `{"type":"auth","secret":"...","resume":"ws-..."}` | First frame when `SERVER_SECRET` is set. `resume` is optional and reattaches to an earlier thread. |
+| `{"type":"resume","call_id":"ws-..."}` | Reattach when no secret is configured, so there is no auth frame to carry it. Must come before the first turn. |
 | `{"type":"user","text":"..."}` | One caller turn. |
 | `{"type":"ping"}` | Optional keepalive. |
 
@@ -250,12 +251,12 @@ Every frame is a JSON object with a `type`.
 
 | Frame | Meaning |
 |---|---|
-| `{"type":"ready","call_id":"ws-..."}` | Auth accepted. This id is the LangGraph thread. |
+| `{"type":"ready","call_id":"ws-...","resumed":false}` | Auth accepted. This id is the LangGraph thread. `resumed` says whether an earlier one was reattached. |
 | `{"type":"delta","text":"..."}` | A piece of the answer, as it is generated. |
 | `{"type":"reset"}` | Discard what was streamed; a correction follows. |
 | `{"type":"ticket","status":"submitted"\|"failed","ticket_id":...,"error":...}` | Outcome of a maintenance submission. |
 | `{"type":"done","route":"...","latency_seconds":n}` | Turn complete. |
-| `{"type":"error","message":"..."}` | Recoverable; the socket stays open. |
+| `{"type":"error","message":"...","retry_after_seconds":n}` | Recoverable, the socket stays open. `retry_after_seconds` is present only on a rate limit refusal. |
 | `{"type":"pong"}` | |
 
 **Close code 1008** for a missing or wrong auth frame, and for any frame over 8 KiB.
@@ -264,7 +265,41 @@ browser history, in `Referer` headers and in every proxy log on the way.
 
 Each connection gets its own `call_id`, so two sockets are two LangGraph threads with
 the same isolation and checkpointing as two Vapi calls. Closing the socket drops the
-session from the in-process registry; checkpoint rows are left alone.
+session from the in-process registry. Checkpoint rows are left alone, which is what
+makes reattaching possible.
+
+### Limits and backpressure
+
+| Limit | Value | Why |
+|---|---|---|
+| Frame size | 8 KiB | A hostile client should not be able to make the server buffer megabytes before any check runs. Closes 1008. |
+| Turns per connection | 12 per 60 seconds | Every turn costs two or three model calls, so this is a spend guard first. Refused with an `error` frame, not a disconnect: someone typing quickly should be told to wait. |
+| Concurrent connections | 32 | Turns on one socket are already strictly sequential, because the loop awaits each turn before reading the next frame. What that does not bound is the number of sockets. Over the cap, the server sends an `error` and closes 1013. |
+
+Both counters live in the process. A second worker would need them in Redis alongside
+the session registry, same as the per-call lock.
+
+### Reconnecting
+
+A dropped socket does not lose the conversation. The checkpoint survives, so a client
+can reattach by passing the old `call_id`:
+
+```jsonc
+// with a secret configured
+{"type": "auth", "secret": "...", "resume": "ws-1a2b3c4d5e6f"}
+// without one
+{"type": "resume", "call_id": "ws-1a2b3c4d5e6f"}
+```
+
+The server replies `ready` with `resumed: true` and continues the thread, including the
+turn counter that drives duplicate detection. Only ids matching the `ws-` plus twelve
+hex characters that this server issues are accepted, so a client cannot probe for or
+invent thread names, and a resume is refused once the connection has taken a turn
+because switching threads mid conversation would silently discard what was said.
+
+**A resume is accepted on the caller's word alone.** With a single shared secret there
+is nothing else to check it against: anyone holding the secret can reattach to any
+thread. That is acceptable for one operator's prototype and is not multi-tenant.
 
 ### Try it
 
@@ -395,12 +430,13 @@ Answer 2.2s · with follow-up resolution 2.5s · maintenance intake 1.5s · rout
 refusal 0.7s · **deterministic refusal 0.01s** (no model call — most of why layer 1
 exists, and why an emergency answer is instant).
 
-### 253 offline tests, no network
+### 265 offline tests, no network
 
 Chunking · scope controls · retrieval · graph routing and state · the maintenance state
 machine and n8n client · sessions and concurrency · the Vapi HTTP contract · endpoint
-authorisation · **22 WebSocket tests** (auth close codes, delta reassembly, socket
-isolation, disconnect cleanup, oversized frames, maintenance submit and n8n failure).
+authorisation · **34 WebSocket tests** (auth close codes, delta reassembly, socket
+isolation, disconnect cleanup, oversized frames, maintenance submit, n8n failure, rate
+limiting, the connection cap, and reattaching to a thread).
 Plus `ruff` clean.
 
 Every test is offline: no API key, no network. GitHub Actions runs `ruff` and `pytest`
@@ -447,12 +483,14 @@ on each push, so the count above is verifiable rather than claimed.
     as a single delta, because they are produced without a model call.
 14. **Latency numbers are loopback on one machine** — no network, no speech-to-text, no
     text-to-speech. They are a floor, not what a user would experience.
-15. **No WebSocket backpressure or rate limiting.** A client can open many sockets or
-    send turns as fast as it likes; only the 8 KiB frame cap and the per-call lock
-    stand in the way.
-16. **No automatic reconnect.** If the socket drops mid-answer the browser reports it
-    and the next message opens a fresh connection with a new thread, losing the
-    conversation context.
+15. **Rate limits and the connection cap are per process.** 12 turns a minute per
+    socket and 32 sockets total, counted in memory. A second worker would double both
+    without noticing, the same way it would double the session registry.
+16. **Reattaching trusts the caller.** Any client holding the shared secret can resume
+    any thread it names. There is no per-user identity to check it against.
+17. **The browser client does not reconnect automatically.** The protocol supports it
+    and the server honours it, but the page still opens a fresh thread on the next
+    message. The TypeScript client in `client/` is where reconnect is exercised.
 
 ---
 
@@ -469,7 +507,7 @@ n8n/        importable workflow (no credentials)
 scripts/    check_corpus · rebuild · create_assistant · mock_n8n · measure_latency ·
             measure_ws_latency
 web/        the browser call page
-tests/      253 offline tests
+tests/      265 offline tests
 ```
 
 ### Adapting to a different property

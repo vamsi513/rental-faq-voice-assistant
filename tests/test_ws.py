@@ -411,3 +411,134 @@ def test_n8n_error_response_pushes_failed(monkeypatch):
         ws.send_json({"type": "user", "text": "yes"})
         _, frames = _collect(ws)
     assert next(f for f in frames if f["type"] == "ticket")["status"] == "failed"
+
+
+# --- rate limiting, connection cap, resume ------------------------------------
+
+def test_turns_are_rate_limited_without_closing_the_socket(ws_client, monkeypatch):
+    """Every turn costs model calls, so an unthrottled client can spend the
+    operator's quota as fast as it can type. Refused with an error frame rather
+    than a disconnect: a human typing quickly should be told to wait."""
+    from app import ws as wsmod
+
+    monkeypatch.setattr(wsmod, "MAX_TURNS_PER_WINDOW", 3)
+    with ws_client.websocket_connect("/ws/chat") as sock:
+        sock.send_json({"type": "auth", "secret": SECRET})
+        sock.receive_json()
+        for _ in range(3):
+            sock.send_json({"type": "user", "text": "What is the pet fee?"})
+            _collect(sock)
+        sock.send_json({"type": "user", "text": "What is the pet fee?"})
+        refused = sock.receive_json()
+        assert refused["type"] == "error"
+        assert "rate limit" in refused["message"]
+        assert refused["retry_after_seconds"] > 0
+        # Still usable: a ping proves the socket was not closed.
+        sock.send_json({"type": "ping"})
+        assert sock.receive_json()["type"] == "pong"
+
+
+def test_rate_limit_window_slides(monkeypatch):
+    """Old hits must fall out of the window, or a long call would lock itself out."""
+    from app.ws import _RateLimiter
+
+    limiter = _RateLimiter(limit=2, window=60.0)
+    assert limiter.check() == 0.0
+    assert limiter.check() == 0.0
+    assert limiter.check() > 0.0
+    limiter._hits = [h - 61 for h in limiter._hits]   # pretend a minute passed
+    assert limiter.check() == 0.0
+
+
+def test_connection_cap_refuses_extra_sockets(ws_client, monkeypatch):
+    """Turns on one socket are already serialised, so the unbounded thing is the
+    number of sockets. This is what caps it."""
+    from app import ws as wsmod
+
+    monkeypatch.setattr(wsmod, "MAX_CONNECTIONS", 1)
+    with ws_client.websocket_connect("/ws/chat") as first:
+        first.send_json({"type": "auth", "secret": SECRET})
+        first.receive_json()
+        with pytest.raises(WebSocketDisconnect) as exc, \
+                ws_client.websocket_connect("/ws/chat") as second:
+            assert second.receive_json()["type"] == "error"
+            second.receive_json()
+    assert exc.value.code == wsmod.CLOSE_TRY_AGAIN_LATER
+
+
+def test_connection_slot_is_released_on_disconnect(ws_client, monkeypatch):
+    """A leaked slot would make the cap tighten permanently."""
+    from app import ws as wsmod
+
+    monkeypatch.setattr(wsmod, "MAX_CONNECTIONS", 1)
+    for _ in range(3):
+        with ws_client.websocket_connect("/ws/chat") as sock:
+            sock.send_json({"type": "auth", "secret": SECRET})
+            assert sock.receive_json()["type"] == "ready"
+
+
+def test_resume_on_the_auth_frame_reuses_the_thread(ws_client):
+    with ws_client.websocket_connect("/ws/chat") as first:
+        first.send_json({"type": "auth", "secret": SECRET})
+        original = first.receive_json()["call_id"]
+        first.send_json({"type": "user", "text": "What is the pet fee?"})
+        _collect(first)
+
+    with ws_client.websocket_connect("/ws/chat") as second:
+        second.send_json({"type": "auth", "secret": SECRET, "resume": original})
+        ready = second.receive_json()
+        assert ready["call_id"] == original and ready["resumed"] is True
+        second.send_json({"type": "user", "text": "Is that refundable?"})
+        _collect(second)
+    assert ws_client.graph.threads == [f"vapi-call:{original}"] * 2
+
+
+def test_resume_frame_works_when_no_secret_is_configured(monkeypatch):
+    """Without a secret there is no auth frame to carry the resume field, so it has
+    to be its own frame. A client that never sends one must not hang."""
+    import contextlib
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    @contextlib.asynccontextmanager
+    async def no_startup(_):
+        yield
+
+    monkeypatch.setattr(server.app.router, "lifespan_context", no_startup)
+    monkeypatch.setattr(server, "settings", replace(server.settings, server_secret=""))
+    graph = StreamingGraph()
+    server.STATE.update(graph=graph, registry=SessionRegistry(), ready=True,
+                        retriever=_StubRetriever(), checkpointer=None)
+    with TestClient(server.app) as client:
+        with client.websocket_connect("/ws/chat") as first:
+            original = first.receive_json()["call_id"]
+            first.send_json({"type": "user", "text": "What is the pet fee?"})
+            _collect(first)
+        with client.websocket_connect("/ws/chat") as second:
+            second.receive_json()
+            second.send_json({"type": "resume", "call_id": original})
+            ready = second.receive_json()
+            assert ready["call_id"] == original and ready["resumed"] is True
+
+
+@pytest.mark.parametrize("bad", ["../../etc/passwd", "vapi-call:x", "ws-zzz", "", 42])
+def test_resume_rejects_ids_this_server_never_issued(ws_client, bad):
+    """A client must not be able to probe for or invent thread names."""
+    with ws_client.websocket_connect("/ws/chat") as sock:
+        sock.send_json({"type": "auth", "secret": SECRET})
+        ready = sock.receive_json()
+        assert ready["resumed"] is False, "a bogus resume must not be honoured"
+        assert ready["call_id"].startswith("ws-")
+
+
+def test_resume_is_refused_after_the_first_turn(ws_client):
+    """Switching threads mid conversation would silently discard what was said."""
+    with ws_client.websocket_connect("/ws/chat") as sock:
+        sock.send_json({"type": "auth", "secret": SECRET})
+        sock.receive_json()
+        sock.send_json({"type": "user", "text": "What is the pet fee?"})
+        _collect(sock)
+        sock.send_json({"type": "resume", "call_id": "ws-0123456789ab"})
+        refused = sock.receive_json()
+        assert refused["type"] == "error" and "before the first turn" in refused["message"]
