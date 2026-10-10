@@ -1,4 +1,4 @@
-# Maple Court Apartments — Maintenance
+# Maple Court Apartments: Maintenance
 
 ## Routine maintenance requests
 Routine requests are submitted through the resident portal, by phone to (555) 0100

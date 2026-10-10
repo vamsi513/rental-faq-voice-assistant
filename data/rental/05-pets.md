@@ -1,4 +1,4 @@
-# Maple Court Apartments — Pet Policy
+# Maple Court Apartments: Pet Policy
 
 ## What is allowed
 Cats and dogs are welcome, with a limit of 2 pets per unit. There is no weight limit.

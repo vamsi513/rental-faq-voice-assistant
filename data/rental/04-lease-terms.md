@@ -1,4 +1,4 @@
-# Maple Court Apartments — Lease Terms
+# Maple Court Apartments: Lease Terms
 
 ## Standard lease length
 The standard lease is 12 months. A 6-month lease is available at $150 per month above

@@ -1,4 +1,4 @@
-# Maple Court Apartments — Move-In and Move-Out
+# Maple Court Apartments: Move-In and Move-Out
 
 ## Before move-in
 Before keys are released, the resident must have:

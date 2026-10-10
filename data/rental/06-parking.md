@@ -1,4 +1,4 @@
-# Maple Court Apartments — Parking
+# Maple Court Apartments: Parking
 
 ## Resident parking
 Each unit receives 1 unreserved surface parking space at no additional charge. A parking

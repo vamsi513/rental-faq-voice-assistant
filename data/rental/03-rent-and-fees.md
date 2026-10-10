@@ -1,4 +1,4 @@
-# Maple Court Apartments — Published Rent and Fees
+# Maple Court Apartments: Published Rent and Fees
 
 ## Monthly rent by floor plan
 These are published starting rates for a 12-month lease. Actual pricing for a specific

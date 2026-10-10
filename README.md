@@ -9,22 +9,50 @@ Maple Court Apartments does not exist. Every price, policy, phone number and add
 `data/rental/` is invented. There are no real tenants, no accounts, no availability feed,
 and nothing here is deployed for a real company.
 
-Two ways in, one workflow behind both:
+## In 30 seconds
 
-```
-voice      browser speaks
-   -> Vapi                       speech-to-text, turn-taking, interruptions
-      -> POST /chat/completions  OpenAI Chat Completions wire format (not OpenAPI)
-      <- one SSE chunk           Vapi wants a finished answer, so this cannot stream
+A caller asks "what is the pet fee?" and hears a grounded answer. They ask "is that
+refundable?" and the agent resolves "that" against the previous turn rather than
+guessing. They ask about their account balance and it says the documents do not cover
+it, instead of inventing a number. They report a leaking faucet and it collects the
+unit, reads the request back, waits for an explicit yes, and only then files a ticket.
 
-text       browser types
-   -> WS /ws/chat                auth frame, then one frame per turn
-      <- {"type":"delta"} ...    token by token, as the model produces them
+Two ways in, one workflow behind both. Vapi handles real phone audio and wants a single
+finished answer. A browser gets the same answer token by token over a WebSocket.
 
-both -> LangGraph                scope -> retrieve -> ground
-                                 or: collect -> confirm -> submit
-           -> n8n webhook        only after an explicit "yes"
-           <- {status, ticket_id, request_id}
+```mermaid
+flowchart TB
+    subgraph clients [Clients]
+        V[Vapi voice call]
+        B[Browser or TypeScript client]
+    end
+
+    V -->|POST /chat/completions<br/>OpenAI wire format| API
+    B <-->|WS /ws/chat<br/>token by token| API
+
+    subgraph server [FastAPI]
+        API[Endpoints<br/>shared secret, rate limit, frame cap]
+    end
+
+    API --> G
+
+    subgraph graph [LangGraph workflow]
+        direction TB
+        S[sanitize<br/>injection, emergencies, pleasantries] --> I[interpret<br/>resolve follow ups]
+        I --> C[classify<br/>route the turn]
+        C -->|property question| R[retrieve<br/>cosine + BM25 over 45 chunks]
+        R --> GEN[generate<br/>grounded, or no evidence]
+        C -->|maintenance| M[collect, read back, await yes]
+        C -->|out of scope| X[fixed refusal, no model call]
+    end
+
+    G[ ]::hidden --> S
+    R -.reads.-> DOCS[(data/rental<br/>10 policy documents)]
+    M -->|only after an explicit yes| N8N[n8n webhook<br/>returns a demo ticket]
+    GEN --> CP[(SQLite checkpoint<br/>one thread per call)]
+    M --> CP
+
+    classDef hidden fill:none,stroke:none
 ```
 
 ---
@@ -41,7 +69,7 @@ uvicorn app.server:app --port 8000
 
 Open <http://127.0.0.1:8000>. Without Vapi credentials the page runs in **text mode**,
 which drives the identical pipeline over the WebSocket and shows the answer appearing
-token by token — every behaviour below is demonstrable with no spend and no public URL.
+token by token, every behaviour below is demonstrable with no spend and no public URL.
 
 ### Example questions
 
@@ -71,7 +99,7 @@ python eval/run_retrieval_eval.py --sweep                       # the threshold 
 `data/rental/` holds ten markdown documents for one property: contact and hours,
 application, rent and fees, lease terms, pets, parking, amenities, maintenance, and
 move-in/move-out. One file per policy area, so a retrieved chunk names the document it
-came from — an answer about the pet fee is traceable to `pets.md`, not to "the corpus".
+came from, an answer about the pet fee is traceable to `pets.md`, not to "the corpus".
 
 Chunking follows each document's own `##` sections, and the document title is embedded
 with each chunk so "what time does the gym open" can reach a section headed only
@@ -80,17 +108,17 @@ it is a note to the reader, not an answer.
 
 `scripts/check_corpus.py` guards consistency. Figures stated in more than one document
 (pet fee, late fee, notice period, …) must agree, or the agent will give two different
-answers depending on which chunk wins retrieval — which looks exactly like a
+answers depending on which chunk wins retrieval, which looks exactly like a
 hallucination. It currently reports no contradictions, and it does catch injected ones.
 
-**Embedding model: `text-embedding-3-small`, 1536d** — unchanged from the previous
+**Embedding model: `text-embedding-3-small`, 1536d**: unchanged from the previous
 version of this project. 45 chunks is one batched call at startup and one ~60ms query
 embedding per turn; nothing in the measurements asks for a larger model.
 
 Retrieval is brute-force cosine in numpy fused with a small BM25 signal by weighted RRF.
 No vector database: 45 vectors do not need one. The fusion weight was re-swept on this
 corpus (`--sweep-weight`) and 0.9 beat both dense-only and the 0.8 tuned on the previous
-corpus — a reminder that the constant belongs to the documents, not to the code.
+corpus, a reminder that the constant belongs to the documents, not to the code.
 
 ---
 
@@ -112,12 +140,12 @@ help with questions about Maple Court's rent, lease, pets, parking, amenities or
 maintenance."*
 
 An individual's balance, application status, lease dates, or unit availability route to
-**missing** — they are about this property, the documents simply have no such data.
+**missing**: they are about this property, the documents simply have no such data.
 
 **Why layered, with evidence.** The similarity gate cannot be the scope mechanism: on
 the eval set the weakest answerable question scores **0.272** and the strongest off-topic
 one **0.354**. They overlap. So `MIN_SIMILARITY` is 0.23, low enough never to block a
-real question, and layer 4 does the work. The router is not trusted alone either — if it
+real question, and layer 4 does the work. The router is not trusted alone either, if it
 says out-of-scope but the top cosine is ≥ 0.45, the refusal is reversed.
 
 Retrieved documents are neutralised and fenced as quoted evidence, so an instruction
@@ -133,7 +161,7 @@ paraphrase.
 
 `AgentState` is a TypedDict. Two fields persist across turns: `messages` (via the
 `add_messages` reducer) and `maintenance` (a pending request). **Everything else is
-per-turn scratch that `sanitize` explicitly resets** — a bug in the previous version left
+per-turn scratch that `sanitize` explicitly resets** - a bug in the previous version left
 `route` persisting and silently disabled follow-up resolution after turn one.
 
 **Checkpointer: `AsyncSqliteSaver`**, opened once in the FastAPI lifespan. One Vapi
@@ -145,7 +173,7 @@ Four distinctions worth stating plainly:
 - **Checkpoints preserve conversation state.** They store what was said, keyed by call.
 - **A call ID identifies a session, not an authenticated tenant.** Anyone can present any
   id. There is no tenant authentication here, and the assistant has no per-tenant data to
-  protect — it reads one public document set.
+  protect, it reads one public document set.
 - **Vapi handles speech capture and turn detection.** Deciding the caller stopped talking
   is Vapi's voice-activity detection, upstream of this server, which only ever receives
   completed turns. LangGraph state does not identify speakers.
@@ -173,11 +201,10 @@ than answering about the security deposit.
 Three rules make this safe to demo:
 
 1. **Submission requires an explicit confirmation**, matched by pattern on the caller's
-   own words — not by a model's judgement. "maybe", "I think so" and "hold on" do not
+   own words, not by a model's judgement. "maybe", "I think so" and "hold on" do not
    submit.
 2. **Success is announced only after validation**: 2xx, parseable JSON, `status:
-   "accepted"`, a `ticket_id`, and a `request_id` matching the one sent. Anything else —
-   timeout, non-2xx, malformed body, mismatched id — produces *"I couldn't confirm that
+   "accepted"`, a `ticket_id`, and a `request_id` matching the one sent. Anything else, timeout, non-2xx, malformed body, mismatched id, produces *"I couldn't confirm that
    the request went through"* and a pointer to the office number.
 3. **A timeout is never retried.** n8n may already have created the ticket.
 
@@ -186,8 +213,7 @@ repeated "yes" or a duplicate delivery from Vapi submits once. The id is recorde
 `submitted_ids` after success; a later confirmation replies "already submitted that one".
 
 **Emergencies bypass the workflow entirely.** Flooding, gas, fire, no heat, sewage, a
-burst pipe or a broken exterior lock produce the documented emergency instructions —
-call 911 first if anyone is in danger, then the 24-hour line — with no model call and no
+burst pipe or a broken exterior lock produce the documented emergency instructions, call 911 first if anyone is in danger, then the 24-hour line, with no model call and no
 request queued. Emergency keyword matching is crude and will miss paraphrases; it is a
 floor, not a ceiling.
 
@@ -205,7 +231,7 @@ and nobody is dispatched.**
 3. **Activate the workflow.** This matters: the **production** URL
    (`/webhook/maintenance`) only works while the workflow is active. The **test** URL
    (`/webhook-test/maintenance`) accepts a single request and only while you are watching
-   the editor — it is not usable for anything but one manual check.
+   the editor, it is not usable for anything but one manual check.
 4. **Copy the production webhook URL** from the Webhook node and put it in `.env`:
 
 ```bash
@@ -260,7 +286,7 @@ Every frame is a JSON object with a `type`.
 | `{"type":"pong"}` | |
 
 **Close code 1008** for a missing or wrong auth frame, and for any frame over 8 KiB.
-The secret travels in the first frame, never in the URL — a query string lands in
+The secret travels in the first frame, never in the URL, a query string lands in
 browser history, in `Referer` headers and in every proxy log on the way.
 
 Each connection gets its own `call_id`, so two sockets are two LangGraph threads with
@@ -318,7 +344,7 @@ asyncio.run(main())
 PY
 ```
 
-Or just open the page and type — text mode uses this socket.
+Or just open the page and type, text mode uses this socket.
 
 ### What streams, and what does not
 
@@ -327,7 +353,7 @@ instructions and maintenance replies are fixed or short strings produced with no
 call, so they arrive as a single delta. The `done` frame names the route, so a client
 can tell which it got.
 
-The first token is held back by 11 characters — the length of the no-evidence sentinel
+The first token is held back by 11 characters, the length of the no-evidence sentinel
 the generator uses to say it found nothing. Without that holdback a refusal would
 briefly render a control word to the caller.
 
@@ -338,7 +364,7 @@ will show a retracted answer.
 
 ### Measured latency
 
-20 sequential requests, **loopback, one machine** — client and server on the same host
+20 sequential requests, **loopback, one machine**: client and server on the same host
 over 127.0.0.1:
 
 | | P50 | P95 | min | max |
@@ -346,7 +372,7 @@ over 127.0.0.1:
 | Time to first delta | **1.08s** | 2.25s | 0.94s | 2.25s |
 | Full response | **1.44s** | 2.66s | 1.23s | 2.66s |
 
-Median 36 deltas per answer. With n=20, P95 is the 19th of 20 samples — an order
+Median 36 deltas per answer. With n=20, P95 is the 19th of 20 samples, an order
 statistic, not a smooth estimate.
 
 This measures the graph: a router call, an optional rewrite call, one embedding and
@@ -381,7 +407,7 @@ public.
 The response uses SSE framing with OpenAI `chat.completion.chunk` objects terminated by
 `data: [DONE]`, which is what Vapi consumes. It is **not token-by-token streaming**: the
 graph produces one finished answer, emitted as a single content chunk plus a stop chunk.
-Real streaming would not help here — the route (answer, refusal, or confirmation prompt)
+Real streaming would not help here, the route (answer, refusal, or confirmation prompt)
 is only known once the node finishes, so there is nothing to stream before then.
 
 "OpenAI-compatible" here means the **Chat Completions wire format**. That is unrelated to
@@ -391,7 +417,7 @@ an OpenAPI specification.
 
 ## Results
 
-### Retrieval — 57 labeled questions (51 answerable, 6 off-topic)
+### Retrieval: 57 labeled questions (51 answerable, 6 off-topic)
 
 Labels name the chunk(s) containing the answer, written by reading `data/chunks.json`.
 
@@ -401,20 +427,20 @@ Labels name the chunk(s) containing the answer, written by reading `data/chunks.
 | **3** | **0.980** | **0.980** | **the generator only sees these** |
 | 5 | 0.980 | 0.980 | |
 
-MRR **0.938**. Dense-only baseline: Hit@1 0.882, MRR 0.925.
+MRR **0.935**. Dense-only baseline: Hit@1 0.882, MRR 0.925.
 
-- **Hit@k** — did at least one relevant chunk reach the top k.
-- **Recall@k** — the share of *all* relevant chunks retrieved. Differs on the 4 questions
+- **Hit@k**: did at least one relevant chunk reach the top k.
+- **Recall@k**: the share of *all* relevant chunks retrieved. Differs on the 4 questions
   with more than one valid source.
-- **Score separation** — answerable mean top-1 cosine **0.482** (min 0.272) vs off-topic
+- **Score separation**: answerable mean top-1 cosine **0.482** (min 0.272) vs off-topic
   **0.156** (max 0.354).
 
-### Grounding — 33 behavioural cases, 33/33 across three runs
+### Grounding: 33 behavioural cases, 33/33 across three runs
 
 11 answered · 6 missing · 4 unrelated · 4 fabrication · 3 injection · 1 clarification ·
 2 emergency · 2 maintenance (collecting, awaiting confirmation).
 
-**This is pattern matching, not semantic judgement** — no model grades the output. A
+**This is pattern matching, not semantic judgement**: no model grades the output. A
 refusal is recognised by a regex covering the phrasings this agent produces; grounding is
 asserted with `must_not_contain` lists of facts that would only appear if invented. The
 maintenance cases assert on the request **status**, because "did not submit" is the claim
@@ -427,7 +453,7 @@ failure until the pattern was widened.
 ### Latency (localhost, excludes speech-to-text and text-to-speech)
 
 Answer 2.2s · with follow-up resolution 2.5s · maintenance intake 1.5s · router-decided
-refusal 0.7s · **deterministic refusal 0.01s** (no model call — most of why layer 1
+refusal 0.7s · **deterministic refusal 0.01s** (no model call, most of why layer 1
 exists, and why an emergency answer is instant).
 
 ### 265 offline tests, no network
@@ -449,7 +475,7 @@ on each push, so the count above is verifiable rather than claimed.
 | **Verified locally, mocked** | 231 tests; retrieval and grounding evals; the n8n client against `httpx.MockTransport` for success, timeout, non-2xx, malformed body and mismatched request id |
 | **Verified locally, real HTTP** | The full collect → confirm → submit flow against `scripts/mock_n8n.py` over real HTTP, including duplicate confirmations creating exactly one ticket, corrections, declines, and all three failure modes |
 | **Verified on the running server** | Rental FAQs, the "is that refundable?" follow-up, all refusal classes, session isolation between two call ids, the Vapi SSE contract with a real `call` object |
-| **NOT verified** | **No live n8n instance.** No real n8n workflow has received a request from this backend. **No live Vapi voice call** has been made against the rental assistant — the voice path is unchanged from a version that was verified on live calls, but it has not been re-tested since the adaptation |
+| **NOT verified** | **No live n8n instance.** No real n8n workflow has received a request from this backend. **No live Vapi voice call** has been made against the rental assistant, the voice path is unchanged from a version that was verified on live calls, but it has not been re-tested since the adaptation |
 
 ---
 
@@ -460,7 +486,7 @@ on each push, so the count above is verifiable rather than claimed.
    remaining step.
 2. **No live voice call since the adaptation.** The Vapi integration is structurally
    unchanged and its HTTP contract is tested, but it has not been spoken to.
-3. **Thresholds are tuned on the set they are measured on** — 51 answerable questions, no
+3. **Thresholds are tuned on the set they are measured on**: 51 answerable questions, no
    holdout.
 4. **Only 6 off-topic examples** behind the score-separation claim.
 5. **Emergency detection is keyword-based.** It will miss a paraphrase. A caller
@@ -469,7 +495,7 @@ on each push, so the count above is verifiable rather than claimed.
    a unit identifier; there is no unit list to check against.
 7. **Duplicate protection is per-session and in-process.** Two workers would each keep
    their own `submitted_ids`. If n8n times out after processing, the caller is told it
-   could not be confirmed while a ticket may exist — deliberately, since the alternative
+   could not be confirmed while a ticket may exist, deliberately, since the alternative
    is a retry that definitely duplicates.
 8. **Pattern-based scope layers are defeatable by paraphrase.**
 9. **No checkpoint retention.** The SQLite file grows forever and holds transcripts.
@@ -481,7 +507,7 @@ on each push, so the count above is verifiable rather than claimed.
     that ignores `reset` will display a retracted answer.
 13. **Only the grounded-answer path streams.** Refusals and maintenance replies arrive
     as a single delta, because they are produced without a model call.
-14. **Latency numbers are loopback on one machine** — no network, no speech-to-text, no
+14. **Latency numbers are loopback on one machine**: no network, no speech-to-text, no
     text-to-speech. They are a floor, not what a user would experience.
 15. **Rate limits and the connection cap are per process.** 12 turns a minute per
     socket and 32 sockets total, counted in memory. A second worker would double both
@@ -519,4 +545,4 @@ python scripts/rebuild.py          # re-chunk, flag stale eval labels
 ```
 
 Eval labels name specific chunk ids, so different documents need them rewritten by hand.
-That is deliberate — auto-generated labels would make the metrics meaningless.
+That is deliberate, auto-generated labels would make the metrics meaningless.

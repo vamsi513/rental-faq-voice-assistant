@@ -10,7 +10,7 @@
       "turns": [
         "What are the office hours?"
       ],
-      "answer": "The leasing office is open Monday through Friday from nine in the morning to six in the evening, and on Saturday from ten in the morning to four in the afternoon. The office is closed on Sundays and certain holidays."
+      "answer": "The leasing office is open Monday through Friday from nine in the morning to six in the evening, and on Saturday from ten in the morning to four in the afternoon. The office is closed on Sundays and on certain holidays."
     },
     {
       "id": "g-rent2br",
@@ -20,7 +20,7 @@
       "turns": [
         "How much is a two bedroom?"
       ],
-      "answer": "The rent for a two bedroom, two bath apartment is one thousand seven hundred and ninety dollars per month."
+      "answer": "A two bedroom apartment is one thousand seven hundred and ninety dollars per month."
     },
     {
       "id": "g-petfee",
@@ -40,7 +40,7 @@
       "turns": [
         "Can I have a dog?"
       ],
-      "answer": "Yes, you can have a dog at Maple Court Apartments, but there are some rules. You're allowed up to two pets per unit, and certain breeds like Pit Bulls and Rottweilers are not permitted. Just make sure to register your dog and provide a current rabies vaccination record."
+      "answer": "Yes, you can have a dog at Maple Court Apartments, but there are some rules. You can have up to two dogs per unit, and certain breeds like Pit Bulls and Rottweilers are not allowed. Make sure to keep your dog leashed in common areas and pick up after them."
     },
     {
       "id": "g-apply",
@@ -50,7 +50,7 @@
       "turns": [
         "What documents do I need to apply?"
       ],
-      "answer": "To apply, you'll need a government-issued photo ID, proof of income for the last thirty days, like two recent pay stubs or your most recent tax return if you're self-employed, and contact details for your two most recent landlords, if you have them."
+      "answer": "To apply, you'll need a government-issued photo ID, proof of income for the last thirty days, like two recent pay stubs or an offer letter, and contact details for your two most recent landlords, if you have them."
     },
     {
       "id": "g-late",
@@ -60,7 +60,7 @@
       "turns": [
         "What is the late fee?"
       ],
-      "answer": "The late fee is seventy-five dollars, and it's charged if rent is not received by the fifth of the month."
+      "answer": "The late fee is seventy-five dollars, and it's charged if rent is more than five days late."
     },
     {
       "id": "g-park",
@@ -70,7 +70,7 @@
       "turns": [
         "Where can my guests park?"
       ],
-      "answer": "Your guests can park in the designated guest spaces marked GUEST near the leasing office. However, they are limited to twenty-four consecutive hours. If your guests need to stay overnight for more than one night, they will need to get a temporary pass from the leasing office."
+      "answer": "Your guests can park in the marked guest spaces near the leasing office, but they are limited to twenty-four consecutive hours. If they need to stay overnight for more than one night, they will need to get a temporary pass from the leasing office."
     },
     {
       "id": "g-notice",
@@ -90,7 +90,7 @@
       "turns": [
         "Who do I call in an emergency?"
       ],
-      "answer": "In an emergency, you should call the twenty-four hour emergency line at five five five, zero one nine nine and press one. Emergencies include things like fire, gas odors, flooding, or a total power outage in your unit. If there's immediate danger to a person, call nine one one first, then the emergency line."
+      "answer": "In an emergency, you should call the twenty-four hour emergency line at five five five, zero one nine nine and press one. An emergency includes situations like fire, gas odor, flooding, or a total power outage. If there's immediate danger to a person, call nine one one first, then the emergency line."
     },
     {
       "id": "g-follow-pet",
@@ -112,7 +112,7 @@
         "How much is a one bedroom?",
         "Does that include utilities?"
       ],
-      "answer": "No, the one bedroom apartment does not include utilities. Residents are responsible for electricity and internet, which are billed directly by the provider. However, there is a flat fee of sixty-five dollars for water, sewer, and trash that is added to the rent each month."
+      "answer": "No, the one bedroom apartment does not include utilities. Residents are responsible for electricity and internet, which are billed directly by the provider. Water, sewer, and trash are a flat fee of sixty-five dollars per month, added to the rent."
     },
     {
       "id": "g-balance",

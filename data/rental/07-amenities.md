@@ -1,4 +1,4 @@
-# Maple Court Apartments — Amenities
+# Maple Court Apartments: Amenities
 
 ## Hours and access
 All amenities are opened with the resident key fob. A lost fob costs $25 to replace.

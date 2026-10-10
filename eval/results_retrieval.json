@@ -12,11 +12,11 @@
     "@5": 0.9804
   },
   "n_multi_chunk": 4,
-  "mrr": 0.9379,
-  "mean_top1_answerable": 0.4816,
-  "mean_top1_unanswerable": 0.1557,
-  "min_top1_answerable": 0.2715,
-  "max_top1_unanswerable": 0.3545,
+  "mrr": 0.9346,
+  "mean_top1_answerable": 0.4773,
+  "mean_top1_unanswerable": 0.1552,
+  "min_top1_answerable": 0.2763,
+  "max_top1_unanswerable": 0.3556,
   "per_question": [
     {
       "id": "hours-1",
@@ -24,7 +24,7 @@
       "question": "What are the office hours?",
       "first_relevant_rank": 1,
       "top1": "contact-and-hours--leasing-office-hours--1",
-      "top1_dense": 0.4882,
+      "top1_dense": 0.4885,
       "expected": [
         "contact-and-hours--leasing-office-hours--1"
       ]
@@ -35,7 +35,7 @@
       "question": "When is the leasing office open on Saturday?",
       "first_relevant_rank": 1,
       "top1": "contact-and-hours--leasing-office-hours--1",
-      "top1_dense": 0.5586,
+      "top1_dense": 0.5546,
       "expected": [
         "contact-and-hours--leasing-office-hours--1"
       ]
@@ -46,7 +46,7 @@
       "question": "How do I contact the leasing office?",
       "first_relevant_rank": 1,
       "top1": "contact-and-hours--how-to-reach-the-office--1",
-      "top1_dense": 0.5822,
+      "top1_dense": 0.5838,
       "expected": [
         "contact-and-hours--how-to-reach-the-office--1"
       ]
@@ -56,8 +56,8 @@
       "category": "emergency",
       "question": "Who do I call for an emergency at night?",
       "first_relevant_rank": 1,
-      "top1": "maintenance--emergency-maintenance--1",
-      "top1_dense": 0.5051,
+      "top1": "contact-and-hours--emergency-contact--1",
+      "top1_dense": 0.4968,
       "expected": [
         "contact-and-hours--emergency-contact--1",
         "maintenance--emergency-maintenance--1"
@@ -69,7 +69,7 @@
       "question": "What counts as a maintenance emergency?",
       "first_relevant_rank": 1,
       "top1": "maintenance--emergency-maintenance--1",
-      "top1_dense": 0.5478,
+      "top1_dense": 0.5429,
       "expected": [
         "contact-and-hours--emergency-contact--1",
         "maintenance--emergency-maintenance--1"
@@ -81,7 +81,7 @@
       "question": "How do I apply for an apartment?",
       "first_relevant_rank": 1,
       "top1": "application--application-process--1",
-      "top1_dense": 0.5628,
+      "top1_dense": 0.5592,
       "expected": [
         "application--application-process--1"
       ]
@@ -92,7 +92,7 @@
       "question": "What documents do I need to apply?",
       "first_relevant_rank": 1,
       "top1": "application--required-documents--1",
-      "top1_dense": 0.5419,
+      "top1_dense": 0.5344,
       "expected": [
         "application--required-documents--1"
       ]
@@ -103,7 +103,7 @@
       "question": "How much is the application fee?",
       "first_relevant_rank": 2,
       "top1": "rent-and-fees--one-time-and-situational-fees--1",
-      "top1_dense": 0.4855,
+      "top1_dense": 0.48,
       "expected": [
         "application--application-process--1"
       ]
@@ -114,7 +114,7 @@
       "question": "What income do I need to qualify?",
       "first_relevant_rank": 1,
       "top1": "application--screening-criteria--1",
-      "top1_dense": 0.4205,
+      "top1_dense": 0.4195,
       "expected": [
         "application--screening-criteria--1"
       ]
@@ -125,7 +125,7 @@
       "question": "Can someone co-sign for me?",
       "first_relevant_rank": 1,
       "top1": "application--screening-criteria--1",
-      "top1_dense": 0.3609,
+      "top1_dense": 0.3524,
       "expected": [
         "application--screening-criteria--1"
       ]
@@ -136,7 +136,7 @@
       "question": "How much is a two bedroom?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--monthly-rent-by-floor-plan--1",
-      "top1_dense": 0.4618,
+      "top1_dense": 0.4572,
       "expected": [
         "rent-and-fees--monthly-rent-by-floor-plan--1"
       ]
@@ -147,7 +147,7 @@
       "question": "What does a studio cost?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--monthly-rent-by-floor-plan--1",
-      "top1_dense": 0.3774,
+      "top1_dense": 0.3676,
       "expected": [
         "rent-and-fees--monthly-rent-by-floor-plan--1"
       ]
@@ -158,7 +158,7 @@
       "question": "When is rent due?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--when-rent-is-due--1",
-      "top1_dense": 0.5451,
+      "top1_dense": 0.5396,
       "expected": [
         "rent-and-fees--when-rent-is-due--1"
       ]
@@ -169,7 +169,7 @@
       "question": "What is the late fee?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--when-rent-is-due--1",
-      "top1_dense": 0.4717,
+      "top1_dense": 0.4632,
       "expected": [
         "rent-and-fees--one-time-and-situational-fees--1",
         "rent-and-fees--when-rent-is-due--1"
@@ -181,7 +181,7 @@
       "question": "How much is the security deposit?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--security-deposit--1",
-      "top1_dense": 0.5483,
+      "top1_dense": 0.5414,
       "expected": [
         "rent-and-fees--security-deposit--1"
       ]
@@ -192,7 +192,7 @@
       "question": "Are utilities included in the rent?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--recurring-monthly-charges--1",
-      "top1_dense": 0.5296,
+      "top1_dense": 0.5256,
       "expected": [
         "rent-and-fees--recurring-monthly-charges--1"
       ]
@@ -203,7 +203,7 @@
       "question": "How can I pay my rent?",
       "first_relevant_rank": 1,
       "top1": "rent-and-fees--when-rent-is-due--1",
-      "top1_dense": 0.5158,
+      "top1_dense": 0.5102,
       "expected": [
         "rent-and-fees--when-rent-is-due--1"
       ]
@@ -214,7 +214,7 @@
       "question": "How long is the lease?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--standard-lease-length--1",
-      "top1_dense": 0.5291,
+      "top1_dense": 0.5328,
       "expected": [
         "lease-terms--standard-lease-length--1"
       ]
@@ -225,7 +225,7 @@
       "question": "How much notice do I need to give before moving out?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--notice-and-move-out--1",
-      "top1_dense": 0.6281,
+      "top1_dense": 0.6271,
       "expected": [
         "lease-terms--notice-to-vacate--1",
         "move-in-move-out--notice-and-move-out--1"
@@ -237,7 +237,7 @@
       "question": "What happens if I break my lease early?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--breaking-a-lease-early--1",
-      "top1_dense": 0.582,
+      "top1_dense": 0.5752,
       "expected": [
         "lease-terms--breaking-a-lease-early--1"
       ]
@@ -248,7 +248,7 @@
       "question": "Can I smoke on the balcony?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--smoking--1",
-      "top1_dense": 0.4567,
+      "top1_dense": 0.4556,
       "expected": [
         "lease-terms--smoking--1"
       ]
@@ -259,7 +259,7 @@
       "question": "What are the quiet hours?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--quiet-hours--1",
-      "top1_dense": 0.612,
+      "top1_dense": 0.611,
       "expected": [
         "lease-terms--quiet-hours--1"
       ]
@@ -270,7 +270,7 @@
       "question": "Can I rent my place out on Airbnb?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--subletting--1",
-      "top1_dense": 0.39,
+      "top1_dense": 0.3854,
       "expected": [
         "lease-terms--subletting--1"
       ]
@@ -281,7 +281,7 @@
       "question": "How many people can live in a one bedroom?",
       "first_relevant_rank": 1,
       "top1": "lease-terms--occupancy--1",
-      "top1_dense": 0.4495,
+      "top1_dense": 0.4487,
       "expected": [
         "lease-terms--occupancy--1"
       ]
@@ -292,7 +292,7 @@
       "question": "What is the pet fee?",
       "first_relevant_rank": 1,
       "top1": "pets--pet-charges--1",
-      "top1_dense": 0.5614,
+      "top1_dense": 0.5563,
       "expected": [
         "pets--pet-charges--1"
       ]
@@ -303,7 +303,7 @@
       "question": "Is the pet fee refundable?",
       "first_relevant_rank": 1,
       "top1": "pets--pet-charges--1",
-      "top1_dense": 0.5101,
+      "top1_dense": 0.5066,
       "expected": [
         "pets--pet-charges--1"
       ]
@@ -314,7 +314,7 @@
       "question": "Can I have a dog?",
       "first_relevant_rank": 1,
       "top1": "pets--what-is-allowed--1",
-      "top1_dense": 0.3682,
+      "top1_dense": 0.3631,
       "expected": [
         "pets--what-is-allowed--1"
       ]
@@ -325,7 +325,7 @@
       "question": "Are there breed restrictions?",
       "first_relevant_rank": 1,
       "top1": "pets--what-is-allowed--1",
-      "top1_dense": 0.4383,
+      "top1_dense": 0.4279,
       "expected": [
         "pets--what-is-allowed--1"
       ]
@@ -336,7 +336,7 @@
       "question": "How many pets can I have?",
       "first_relevant_rank": 1,
       "top1": "pets--what-is-allowed--1",
-      "top1_dense": 0.5071,
+      "top1_dense": 0.4996,
       "expected": [
         "pets--what-is-allowed--1"
       ]
@@ -347,7 +347,7 @@
       "question": "Do I pay a pet fee for a service animal?",
       "first_relevant_rank": 1,
       "top1": "pets--service-and-assistance-animals--1",
-      "top1_dense": 0.5268,
+      "top1_dense": 0.519,
       "expected": [
         "pets--service-and-assistance-animals--1"
       ]
@@ -358,7 +358,7 @@
       "question": "Do I have to pick up after my dog?",
       "first_relevant_rank": 1,
       "top1": "pets--pet-rules-on-the-property--1",
-      "top1_dense": 0.386,
+      "top1_dense": 0.3766,
       "expected": [
         "pets--pet-rules-on-the-property--1"
       ]
@@ -369,7 +369,7 @@
       "question": "How does parking work?",
       "first_relevant_rank": 1,
       "top1": "parking--resident-parking--1",
-      "top1_dense": 0.5046,
+      "top1_dense": 0.4995,
       "expected": [
         "parking--resident-parking--1"
       ]
@@ -380,7 +380,7 @@
       "question": "How much is a reserved parking space?",
       "first_relevant_rank": 1,
       "top1": "parking--resident-parking--1",
-      "top1_dense": 0.584,
+      "top1_dense": 0.5771,
       "expected": [
         "parking--resident-parking--1"
       ]
@@ -402,7 +402,7 @@
       "question": "Is there anywhere to charge an electric car?",
       "first_relevant_rank": 1,
       "top1": "parking--electric-vehicles--1",
-      "top1_dense": 0.5115,
+      "top1_dense": 0.5144,
       "expected": [
         "parking--electric-vehicles--1"
       ]
@@ -413,7 +413,7 @@
       "question": "Can I keep a boat in the lot?",
       "first_relevant_rank": 2,
       "top1": "parking--towing--1",
-      "top1_dense": 0.3377,
+      "top1_dense": 0.3413,
       "expected": [
         "parking--vehicle-restrictions--1"
       ]
@@ -424,7 +424,7 @@
       "question": "What time does the gym open?",
       "first_relevant_rank": 1,
       "top1": "amenities--hours-and-access--1",
-      "top1_dense": 0.3689,
+      "top1_dense": 0.3636,
       "expected": [
         "amenities--hours-and-access--1"
       ]
@@ -433,9 +433,9 @@
       "id": "amen-2",
       "category": "amenities",
       "question": "Is there a pool?",
-      "first_relevant_rank": 2,
+      "first_relevant_rank": 3,
       "top1": "amenities--guests-at-amenities--1",
-      "top1_dense": 0.3568,
+      "top1_dense": 0.3524,
       "expected": [
         "amenities--hours-and-access--1"
       ]
@@ -446,7 +446,7 @@
       "question": "Is there laundry in the unit?",
       "first_relevant_rank": 1,
       "top1": "amenities--hours-and-access--1",
-      "top1_dense": 0.373,
+      "top1_dense": 0.3757,
       "expected": [
         "amenities--hours-and-access--1"
       ]
@@ -457,7 +457,7 @@
       "question": "Can I book the lounge for a party?",
       "first_relevant_rank": 1,
       "top1": "amenities--hours-and-access--1",
-      "top1_dense": 0.2897,
+      "top1_dense": 0.2827,
       "expected": [
         "amenities--hours-and-access--1"
       ]
@@ -468,7 +468,7 @@
       "question": "How long do you hold packages?",
       "first_relevant_rank": null,
       "top1": "move-in-move-out--security-deposit-return--1",
-      "top1_dense": 0.2715,
+      "top1_dense": 0.2763,
       "expected": [
         "amenities--hours-and-access--1"
       ]
@@ -479,7 +479,7 @@
       "question": "How do I submit a maintenance request?",
       "first_relevant_rank": 1,
       "top1": "maintenance--routine-maintenance-requests--1",
-      "top1_dense": 0.5411,
+      "top1_dense": 0.5359,
       "expected": [
         "maintenance--routine-maintenance-requests--1"
       ]
@@ -490,7 +490,7 @@
       "question": "How long does a routine repair take?",
       "first_relevant_rank": 1,
       "top1": "maintenance--routine-maintenance-requests--1",
-      "top1_dense": 0.52,
+      "top1_dense": 0.5116,
       "expected": [
         "maintenance--routine-maintenance-requests--1"
       ]
@@ -501,7 +501,7 @@
       "question": "Will I be charged for a clogged drain?",
       "first_relevant_rank": 1,
       "top1": "maintenance--charges-for-repairs--1",
-      "top1_dense": 0.4107,
+      "top1_dense": 0.4043,
       "expected": [
         "maintenance--charges-for-repairs--1"
       ]
@@ -512,7 +512,7 @@
       "question": "Do you give notice before entering my apartment?",
       "first_relevant_rank": 3,
       "top1": "move-in-move-out--notice-and-move-out--1",
-      "top1_dense": 0.5343,
+      "top1_dense": 0.5303,
       "expected": [
         "maintenance--entry-for-maintenance--1"
       ]
@@ -523,7 +523,7 @@
       "question": "Who changes the air filters?",
       "first_relevant_rank": 1,
       "top1": "maintenance--filters-and-resident-upkeep--1",
-      "top1_dense": 0.4573,
+      "top1_dense": 0.4465,
       "expected": [
         "maintenance--filters-and-resident-upkeep--1"
       ]
@@ -534,7 +534,7 @@
       "question": "What do I need before I get my keys?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--before-move-in--1",
-      "top1_dense": 0.465,
+      "top1_dense": 0.4609,
       "expected": [
         "move-in-move-out--before-move-in--1"
       ]
@@ -545,7 +545,7 @@
       "question": "Do I need renters insurance?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--before-move-in--1",
-      "top1_dense": 0.3079,
+      "top1_dense": 0.3029,
       "expected": [
         "move-in-move-out--before-move-in--1"
       ]
@@ -556,7 +556,7 @@
       "question": "When do I get my security deposit back?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--security-deposit-return--1",
-      "top1_dense": 0.5893,
+      "top1_dense": 0.5923,
       "expected": [
         "move-in-move-out--security-deposit-return--1"
       ]
@@ -567,7 +567,7 @@
       "question": "What do I have to clean before moving out?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--move-out-condition--1",
-      "top1_dense": 0.5712,
+      "top1_dense": 0.5664,
       "expected": [
         "move-in-move-out--move-out-condition--1"
       ]
@@ -578,7 +578,7 @@
       "question": "What hours can I move my furniture in?",
       "first_relevant_rank": 1,
       "top1": "move-in-move-out--moving-hours-and-elevator--1",
-      "top1_dense": 0.5663,
+      "top1_dense": 0.5566,
       "expected": [
         "move-in-move-out--moving-hours-and-elevator--1"
       ]
@@ -589,7 +589,7 @@
       "question": "What is the capital of France?",
       "first_relevant_rank": null,
       "top1": "parking--resident-parking--1",
-      "top1_dense": 0.1016,
+      "top1_dense": 0.1045,
       "expected": []
     },
     {
@@ -598,7 +598,7 @@
       "question": "Can you write me a Python script?",
       "first_relevant_rank": null,
       "top1": "contact-and-hours--how-to-reach-the-office--1",
-      "top1_dense": 0.1112,
+      "top1_dense": 0.1153,
       "expected": []
     },
     {
@@ -607,7 +607,7 @@
       "question": "What's the weather tomorrow?",
       "first_relevant_rank": null,
       "top1": "maintenance--routine-maintenance-requests--1",
-      "top1_dense": 0.1454,
+      "top1_dense": 0.1416,
       "expected": []
     },
     {
@@ -615,8 +615,8 @@
       "category": "unanswerable",
       "question": "Who won the World Cup?",
       "first_relevant_rank": null,
-      "top1": "rent-and-fees--security-deposit--1",
-      "top1_dense": -0.0076,
+      "top1": "amenities--wi-fi--1",
+      "top1_dense": -0.0133,
       "expected": []
     },
     {
@@ -625,7 +625,7 @@
       "question": "Explain how a mortgage works.",
       "first_relevant_rank": null,
       "top1": "move-in-move-out--before-move-in--1",
-      "top1_dense": 0.2287,
+      "top1_dense": 0.2272,
       "expected": []
     },
     {
@@ -634,7 +634,7 @@
       "question": "What are rents like in Chicago?",
       "first_relevant_rank": null,
       "top1": "rent-and-fees--recurring-monthly-charges--1",
-      "top1_dense": 0.3545,
+      "top1_dense": 0.3556,
       "expected": []
     }
   ]

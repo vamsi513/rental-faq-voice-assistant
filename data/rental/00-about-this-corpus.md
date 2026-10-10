@@ -1,4 +1,4 @@
-<!-- retrievable: false — a note to the reader, not an answer to any caller question. -->
+<!-- retrievable: false, a note to the reader, not an answer to any caller question. -->
 ## About this corpus
 Every document in data/rental/ describes MAPLE COURT APARTMENTS, a property that does
 not exist. Addresses, phone numbers, prices, policies and staff names are invented for a

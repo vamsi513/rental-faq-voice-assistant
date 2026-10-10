@@ -1,4 +1,4 @@
-# Maple Court Apartments — Applying
+# Maple Court Apartments: Applying
 
 ## Application process
 Applications are submitted online at the Maple Court resident portal, or on paper at the

@@ -1,4 +1,4 @@
-# Maple Court Apartments — Office and Contact
+# Maple Court Apartments: Office and Contact
 
 ## Leasing office hours
 The leasing office is open Monday through Friday, 9:00 AM to 6:00 PM, and Saturday
