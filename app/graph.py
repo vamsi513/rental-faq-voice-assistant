@@ -25,7 +25,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import date
+from contextvars import ContextVar
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
@@ -38,6 +38,15 @@ from app.config import Settings
 from app.retriever import PolicyRetriever
 
 log = logging.getLogger("agent.graph")
+
+# Where a streaming caller parks its token sink for the duration of one turn.
+#
+# A ContextVar rather than a graph-config entry because the sink is a live coroutine:
+# it cannot go in AgentState, which is serialised into the checkpoint, and threading it
+# through the run config made LangGraph warn about the node signature. A ContextVar is
+# set and reset around a single `ainvoke`, and asyncio copies the context into the
+# tasks LangGraph spawns, so each concurrent turn sees only its own sink.
+TOKEN_SINK: ContextVar[Any] = ContextVar("token_sink", default=None)
 
 Route = Literal[
     "property_question", "maintenance", "emergency", "small_talk",
@@ -188,6 +197,46 @@ def build_graph(
     shared httpx.AsyncClient for the n8n call; tests pass a transport-mocked one.
     """
     outline = _coverage_outline(retriever)
+
+    # How many characters to hold back before releasing the first token to a streaming
+    # client. The generator signals "I have no supporting evidence" by replying with the
+    # bare sentinel, so streaming it would show the caller a control word. Holding back
+    # exactly the sentinel's length is enough to tell them apart, and costs one chunk of
+    # latency on real answers.
+    _HOLDBACK = len(prompts.NO_EVIDENCE_SENTINEL)
+
+    async def _stream_call(
+        system: str, user: str, max_tokens: int, temperature: float, on_token: Any
+    ) -> str:
+        """Stream the model's reply to `on_token`, returning the complete text.
+
+        Genuinely token by token: each chunk is forwarded as it arrives from the API,
+        not reassembled and replayed afterwards. The only delay is the holdback above.
+        """
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        full, buffer, released = "", "", False
+        async for chunk in llm.astream(messages, max_tokens=max_tokens, temperature=temperature):
+            piece = chunk.content or ""
+            if not piece:
+                continue
+            full += piece
+            if released:
+                await on_token(piece)
+                continue
+            buffer += piece
+            if len(buffer.strip()) < _HOLDBACK:
+                continue
+            if buffer.strip().upper().startswith(prompts.NO_EVIDENCE_SENTINEL):
+                return full          # a refusal is coming; stream nothing
+            released = True
+            await on_token(buffer)
+        if (
+            not released
+            and buffer.strip()
+            and not buffer.strip().upper().startswith(prompts.NO_EVIDENCE_SENTINEL)
+        ):
+            await on_token(buffer)   # answer shorter than the holdback
+        return full
 
     def _call(system: str, user: str, max_tokens: int, temperature: float) -> str:
         response = llm.invoke(
@@ -400,25 +449,36 @@ def build_graph(
             update["route_reason"] = f"top dense score {top:.3f} < {settings.min_similarity}"
         return update
 
-    def generate(state: AgentState) -> dict:
-        """Grounded answer, then the post-generation sensitive-topic check."""
+    async def generate(state: AgentState) -> dict:
+        """Grounded answer, then the post-generation sensitive-topic check.
+
+        When TOKEN_SINK holds a coroutine (the WebSocket path), the answer is streamed
+        to it as the model produces it. The post-checks below still run on the finished
+        text, so a streamed answer can still be retracted -- the socket protocol has a
+        `reset` event for exactly that.
+        """
         started = time.perf_counter()
+        on_token = TOKEN_SINK.get()
         evidence = state.get("evidence", [])
-        # Neutralise and fence each passage so resume text reads as data, not direction.
+        # Neutralise and fence each passage so document text reads as data, not direction.
         blocks = "\n\n".join(
             f"--- passage {i} ---\n{scope.neutralise(e['text'])}"
             for i, e in enumerate(evidence, start=1)
         )
         question = state.get("resolved_question") or state.get("question", "")
+        user_prompt = prompts.ANSWER_USER.format(evidence=blocks, question=question)
         try:
-            answer = _call(
-                prompts.ANSWER_SYSTEM,
-                prompts.ANSWER_USER.format(
-                    today=date.today().isoformat(), evidence=blocks, question=question
-                ),
-                max_tokens=settings.max_answer_tokens,
-                temperature=settings.temperature,
-            )
+            if on_token is not None:
+                answer = await _stream_call(
+                    prompts.ANSWER_SYSTEM, user_prompt,
+                    settings.max_answer_tokens, settings.temperature, on_token,
+                )
+            else:
+                answer = _call(
+                    prompts.ANSWER_SYSTEM, user_prompt,
+                    max_tokens=settings.max_answer_tokens,
+                    temperature=settings.temperature,
+                )
         except Exception:
             log.exception("generation failed")
             return {

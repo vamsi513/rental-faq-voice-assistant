@@ -32,7 +32,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -475,6 +475,19 @@ async def vapi_config(_: None = Depends(require_secret)) -> dict:
         "assistantId": settings.vapi_assistant_id,
         "configured": bool(settings.vapi_public_key and settings.vapi_assistant_id),
     }
+
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket) -> None:
+    """Streaming chat over a socket. Protocol and limits are documented in app/ws.py.
+
+    Same graph, same checkpointer and the same per-connection thread isolation as the
+    Vapi path -- the difference is that this one can stream tokens, which the SSE
+    endpoint cannot because Vapi wants one finished answer.
+    """
+    from app.ws import chat_socket
+
+    await chat_socket(websocket, STATE, settings)
 
 
 @app.get("/greeting")

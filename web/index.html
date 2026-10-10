@@ -264,55 +264,102 @@ async function refreshDebug(id) {
   } catch (_) { /* debug panel is best-effort */ }
 }
 
-// ---- text mode -----------------------------------------------------------
+// ---- text mode: streaming over /ws/chat -----------------------------------
+// The Vapi voice path and the SSE /chat/completions endpoint are untouched. This
+// socket exists because a browser can show tokens as they arrive, which the SSE
+// endpoint cannot do -- Vapi wants one finished answer.
+let socket = null;
+let socketReady = null;        // promise resolved once the server sends "ready"
+let pending = null;            // the turn currently streaming
+
+function wsUrl() {
+  const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+  // The access key is sent in the first frame, never in the URL: a query string lands
+  // in browser history, in Referer headers and in every proxy log on the way.
+  return `${scheme}//${location.host}/ws/chat`;
+}
+
+function openSocket() {
+  if (socketReady) return socketReady;
+  socketReady = new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl());
+    const giveUp = setTimeout(() => reject(new Error("timed out opening the socket")), 10000);
+
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", secret: sharedSecret }));
+
+    ws.onmessage = (event) => {
+      let m;
+      try { m = JSON.parse(event.data); } catch (_) { return; }
+
+      if (m.type === "ready") {
+        clearTimeout(giveUp);
+        callId = m.call_id;
+        socket = ws;
+        resolve(ws);
+        return;
+      }
+      if (!pending) return;
+
+      if (m.type === "delta") {
+        pending.text += m.text;
+        pending.el.querySelector(".what").textContent = pending.text;
+        $("transcript").scrollTop = $("transcript").scrollHeight;
+      } else if (m.type === "reset") {
+        // A post-check retracted what was streamed. Clear and wait for the replacement.
+        pending.text = "";
+        pending.el.querySelector(".what").textContent = "";
+      } else if (m.type === "ticket") {
+        addTurn("note", m.status === "submitted"
+          ? `Demo ticket ${m.ticket_id} accepted.`
+          : `Submission could not be confirmed${m.error ? ` (${m.error})` : ""}.`);
+      } else if (m.type === "error") {
+        addTurn("error", m.message || "error");
+      } else if (m.type === "done") {
+        pending.el.classList.remove("partial");
+        pending = null;
+        setStatus("turn", "idle");
+        refreshDebug(callId);
+      }
+    };
+
+    ws.onerror = () => { clearTimeout(giveUp); reject(new Error("socket error")); };
+    ws.onclose = (event) => {
+      clearTimeout(giveUp);
+      socket = null;
+      socketReady = null;
+      if (event.code === 1008) {
+        addTurn("error", "Access key missing or rejected.");
+        $("auth").hidden = false;
+      }
+      if (pending) {
+        pending.el.classList.remove("partial");
+        pending = null;
+        setStatus("turn", "disconnected");
+      }
+      reject(new Error(`socket closed (${event.code})`));
+    };
+  });
+  return socketReady;
+}
+
 async function sendText() {
   const text = $("msg").value.trim();
-  if (!text) return;
+  if (!text || pending) return;
   $("msg").value = "";
-  callId = callId || "web-text-" + Math.random().toString(36).slice(2, 10);
   addTurn("you", text);
-  setStatus("turn", "thinking…", "busy");
+  setStatus("turn", "thinking\u2026", "busy");
+
+  let ws;
   try {
-    const res = await fetch("/text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...secretHeaders() },
-      body: JSON.stringify({ call_id: callId, message: text }),
-    });
-    if (res.status === 401) {
-      addTurn("error", "Access key missing or rejected.");
-      $("auth").hidden = false;
-      setStatus("turn", "locked");
-      return;
-    }
-    const d = await res.json();
-    addTurn("assistant", d.answer || d.detail || "(no answer)");
-    setStatus("turn", "idle");
-    refreshDebug(callId);
+    ws = await openSocket();
   } catch (e) {
-    addTurn("error", String(e));
+    addTurn("error", String(e.message || e));
     setStatus("turn", "error");
+    return;
   }
-}
-// Sample questions. Clicking one fills the box and sends it, so a reviewer can try the
-// prototype without having to guess what it covers.
-const SAMPLES = [
-  "What are the office hours?",
-  "How much is a two bedroom?",
-  "What is the pet fee?",
-  "Is that refundable?",
-  "Can I have a dog?",
-  "How does guest parking work?",
-  "What do I need to apply?",
-  "I want to report a leaking kitchen faucet",
-];
-for (const q of SAMPLES) {
-  const li = document.createElement("li");
-  const b = document.createElement("button");
-  b.type = "button";
-  b.textContent = q;                       // textContent: never innerHTML
-  b.onclick = () => { $("msg").value = q; sendText(); };
-  li.append(b);
-  $("samples").append(li);
+  // The assistant bubble appears immediately and fills in as deltas arrive.
+  pending = { el: addTurn("assistant", "", true), text: "" };
+  ws.send(JSON.stringify({ type: "user", text }));
 }
 
 $("send").onclick = sendText;

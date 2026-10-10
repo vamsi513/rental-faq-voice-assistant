@@ -13,6 +13,9 @@ python-dotenv==1.2.4
 numpy==2.5.3
 pypdf==6.19.0
 aiosqlite==0.22.1
+# Pulled in by uvicorn[standard] anyway; pinned explicitly because
+# scripts/measure_ws_latency.py imports it directly.
+websockets==16.1.1
 
 # dev / eval
 pytest==9.1.1

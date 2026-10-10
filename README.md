@@ -9,16 +9,22 @@ Maple Court Apartments does not exist. Every price, policy, phone number and add
 `data/rental/` is invented. There are no real tenants, no accounts, no availability feed,
 and nothing here is deployed for a real company.
 
+Two ways in, one workflow behind both:
+
 ```
-caller speaks
+voice      browser speaks
    -> Vapi                       speech-to-text, turn-taking, interruptions
       -> POST /chat/completions  OpenAI Chat Completions wire format (not OpenAPI)
-         -> LangGraph            scope -> retrieve -> ground
+      <- one SSE chunk           Vapi wants a finished answer, so this cannot stream
+
+text       browser types
+   -> WS /ws/chat                auth frame, then one frame per turn
+      <- {"type":"delta"} ...    token by token, as the model produces them
+
+both -> LangGraph                scope -> retrieve -> ground
                                  or: collect -> confirm -> submit
-            -> n8n webhook       only after an explicit "yes"
-            <- {status, ticket_id, request_id}
-      <- SSE chat.completion.chunk
-   <- Vapi                       text-to-speech
+           -> n8n webhook        only after an explicit "yes"
+           <- {status, ticket_id, request_id}
 ```
 
 ---
@@ -34,8 +40,8 @@ uvicorn app.server:app --port 8000
 ```
 
 Open <http://127.0.0.1:8000>. Without Vapi credentials the page runs in **text mode**,
-which exercises the identical pipeline over `POST /text` — every behaviour below is
-demonstrable with no spend and no public URL.
+which drives the identical pipeline over the WebSocket and shows the answer appearing
+token by token — every behaviour below is demonstrable with no spend and no public URL.
 
 ### Example questions
 
@@ -51,7 +57,7 @@ demonstrable with no spend and no public URL.
 ### Checks
 
 ```bash
-pytest -q                                                       # 231 offline tests
+pytest -q                                                       # 253 offline tests
 python scripts/check_corpus.py                                  # corpus contradictions
 python eval/run_retrieval_eval.py --hybrid --dense-weight 0.9   # Hit@k, Recall@k, MRR
 python eval/run_grounding_eval.py --base http://127.0.0.1:8000  # 33 behavioural cases
@@ -224,6 +230,97 @@ N8N_WEBHOOK_SECRET=test-secret uvicorn app.server:app --port 8000
 
 ---
 
+## WebSocket chat
+
+`/ws/chat` is a second way into the same graph. It exists because the Vapi endpoint
+cannot stream: Vapi wants one finished answer, so `/chat/completions` returns a single
+SSE chunk. A browser can do better, and this does.
+
+Every frame is a JSON object with a `type`.
+
+**Client → server**
+
+| Frame | Meaning |
+|---|---|
+| `{"type":"auth","secret":"..."}` | First frame. Required whenever `SERVER_SECRET` is set. |
+| `{"type":"user","text":"..."}` | One caller turn. |
+| `{"type":"ping"}` | Optional keepalive. |
+
+**Server → client**
+
+| Frame | Meaning |
+|---|---|
+| `{"type":"ready","call_id":"ws-..."}` | Auth accepted. This id is the LangGraph thread. |
+| `{"type":"delta","text":"..."}` | A piece of the answer, as it is generated. |
+| `{"type":"reset"}` | Discard what was streamed; a correction follows. |
+| `{"type":"ticket","status":"submitted"\|"failed","ticket_id":...,"error":...}` | Outcome of a maintenance submission. |
+| `{"type":"done","route":"...","latency_seconds":n}` | Turn complete. |
+| `{"type":"error","message":"..."}` | Recoverable; the socket stays open. |
+| `{"type":"pong"}` | |
+
+**Close code 1008** for a missing or wrong auth frame, and for any frame over 8 KiB.
+The secret travels in the first frame, never in the URL — a query string lands in
+browser history, in `Referer` headers and in every proxy log on the way.
+
+Each connection gets its own `call_id`, so two sockets are two LangGraph threads with
+the same isolation and checkpointing as two Vapi calls. Closing the socket drops the
+session from the in-process registry; checkpoint rows are left alone.
+
+### Try it
+
+```bash
+python - <<'PY'
+import asyncio, json, websockets
+async def main():
+    async with websockets.connect("ws://127.0.0.1:8000/ws/chat") as ws:
+        # send an auth frame first if SERVER_SECRET is set
+        print(json.loads(await ws.recv()))
+        await ws.send(json.dumps({"type": "user", "text": "What is the pet fee?"}))
+        while (m := json.loads(await ws.recv()))["type"] != "done":
+            if m["type"] == "delta":
+                print(m["text"], end="", flush=True)
+asyncio.run(main())
+PY
+```
+
+Or just open the page and type — text mode uses this socket.
+
+### What streams, and what does not
+
+**Only the grounded-answer path streams token by token.** Refusals, emergency
+instructions and maintenance replies are fixed or short strings produced with no model
+call, so they arrive as a single delta. The `done` frame names the route, so a client
+can tell which it got.
+
+The first token is held back by 11 characters — the length of the no-evidence sentinel
+the generator uses to say it found nothing. Without that holdback a refusal would
+briefly render a control word to the caller.
+
+**A streamed answer can still be retracted.** The post-generation checks run on the
+finished text, so an answer that has already reached the client can be rejected. The
+server then sends `reset` followed by the replacement. A client that ignores `reset`
+will show a retracted answer.
+
+### Measured latency
+
+20 sequential requests, **loopback, one machine** — client and server on the same host
+over 127.0.0.1:
+
+| | P50 | P95 | min | max |
+|---|---|---|---|---|
+| Time to first delta | **1.08s** | 2.25s | 0.94s | 2.25s |
+| Full response | **1.44s** | 2.66s | 1.23s | 2.66s |
+
+Median 36 deltas per answer. With n=20, P95 is the 19th of 20 samples — an order
+statistic, not a smooth estimate.
+
+This measures the graph: a router call, an optional rewrite call, one embedding and
+generation. It measures nothing about a network. A real user adds internet round trips;
+a voice caller adds speech-to-text and text-to-speech on top. **These numbers are a
+floor.** Reproduce with `python scripts/measure_ws_latency.py --n 20`.
+
+---
+
 ## Connecting Vapi
 
 Expose the server over HTTPS, then create the assistant:
@@ -298,11 +395,16 @@ Answer 2.2s · with follow-up resolution 2.5s · maintenance intake 1.5s · rout
 refusal 0.7s · **deterministic refusal 0.01s** (no model call — most of why layer 1
 exists, and why an emergency answer is instant).
 
-### 231 offline tests, no network
+### 253 offline tests, no network
 
 Chunking · scope controls · retrieval · graph routing and state · the maintenance state
 machine and n8n client · sessions and concurrency · the Vapi HTTP contract · endpoint
-authorisation. Plus `ruff` clean.
+authorisation · **22 WebSocket tests** (auth close codes, delta reassembly, socket
+isolation, disconnect cleanup, oversized frames, maintenance submit and n8n failure).
+Plus `ruff` clean.
+
+Every test is offline: no API key, no network. GitHub Actions runs `ruff` and `pytest`
+on each push, so the count above is verifiable rather than claimed.
 
 ### What was verified, and how
 
@@ -337,7 +439,20 @@ authorisation. Plus `ruff` clean.
 9. **No checkpoint retention.** The SQLite file grows forever and holds transcripts.
 10. **The corpus checker verifies repeated figures, not every claim.** It cannot prove the
     documents are complete or sensible.
-11. **Single shared access key, not per-user auth.**
+11. **Single shared access key, not per-user auth.** The WebSocket uses the same one.
+12. **A streamed answer can be retracted.** Post-generation checks run on the finished
+    text, so the client may see tokens that are then withdrawn with a `reset`. A client
+    that ignores `reset` will display a retracted answer.
+13. **Only the grounded-answer path streams.** Refusals and maintenance replies arrive
+    as a single delta, because they are produced without a model call.
+14. **Latency numbers are loopback on one machine** — no network, no speech-to-text, no
+    text-to-speech. They are a floor, not what a user would experience.
+15. **No WebSocket backpressure or rate limiting.** A client can open many sockets or
+    send turns as fast as it likes; only the 8 KiB frame cap and the per-call lock
+    stand in the way.
+16. **No automatic reconnect.** If the socket drops mid-answer the browser reports it
+    and the next message opens a fresh connection with a new thread, losing the
+    conversation context.
 
 ---
 
@@ -345,14 +460,16 @@ authorisation. Plus `ruff` clean.
 
 ```
 app/        config · chunking · embeddings · retriever · scope · prompts · graph ·
-            maintenance (n8n client + confirmation state machine) · sessions · server
+            maintenance (n8n client + confirmation state machine) · sessions · server ·
+            ws (the /ws/chat protocol)
 data/rental/  the ten sample property documents
 data/       chunks.json (the indexed corpus)
 eval/       labeled sets and actual measured results
 n8n/        importable workflow (no credentials)
-scripts/    check_corpus · rebuild · create_assistant · mock_n8n · measure_latency
+scripts/    check_corpus · rebuild · create_assistant · mock_n8n · measure_latency ·
+            measure_ws_latency
 web/        the browser call page
-tests/      231 offline tests
+tests/      253 offline tests
 ```
 
 ### Adapting to a different property

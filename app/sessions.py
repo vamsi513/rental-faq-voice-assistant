@@ -107,6 +107,20 @@ class SessionRegistry:
             for key, _ in oldest[: len(oldest) - MAX_FINGERPRINTS_PER_CALL]:
                 session.answered.pop(key, None)
 
+    async def drop(self, call_id: str) -> bool:
+        """Forget a session immediately, used when a WebSocket closes.
+
+        Frees the lock and the dedupe table. Checkpoint rows are untouched: the
+        conversation stays readable through /debug/thread, and a reconnect with the
+        same id would resume it. Without this, every socket that ever connected would
+        sit in the registry until the idle sweeper ran.
+        """
+        async with self._guard:
+            existed = self._sessions.pop(call_id, None) is not None
+        if existed:
+            log.info("session dropped call_id=%s", call_id)
+        return existed
+
     async def sweep(self) -> int:
         """Drop idle sessions. Checkpoint rows are untouched -- only locks and
         fingerprints are freed, so a late turn on a swept call still has its history."""
