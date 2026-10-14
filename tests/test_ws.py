@@ -6,6 +6,7 @@ real component is used is the n8n client, which runs against httpx.MockTransport
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 
@@ -225,6 +226,12 @@ def test_disconnect_mid_stream_stops_generation_and_cleans_up(ws_client):
             for i in range(200):
                 await sink(f"word{i} ")
                 sent.append(f"word{i}")
+                # Sending to the socket buffers without necessarily yielding, so
+                # without this the loop can run to completion before the event
+                # loop ever notices the client went away, and the assertion below
+                # races the generator. Sleeping yields and makes the stream slow
+                # enough that a disconnect stops it in a handful of tokens.
+                await asyncio.sleep(0.01)
             return {"answer": " ".join(sent), "route": "property_question",
                     "evidence": [], "messages": [], "maintenance": {}}
 
