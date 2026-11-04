@@ -234,6 +234,18 @@ def is_injury(text: str) -> bool:
     return bool(_INJURY.search(body)) and not _NO_INJURY.search(body)
 
 
+def states_injury_outcome(text: str) -> bool:
+    """True when the caller themselves said something about whether anyone was hurt.
+
+    Either direction counts: a report of an injury or a denial of one. What this is for
+    is deciding whether an extracted INJURED value has any basis in what the caller
+    actually said. Note it reads one turn of the caller's own words and never the
+    transcript, because the agent's own "Was anyone injured?" would match.
+    """
+    body = text or ""
+    return bool(_INJURY.search(body) or _NO_INJURY.search(body))
+
+
 def is_bypass_attempt(text: str) -> bool:
     """True when the turn tries to reach filing without an explicit confirmation."""
     return bool(_BYPASS.search(" ".join((text or "").split())))
@@ -462,14 +474,18 @@ POLICY: <the policy number as spoken, or NONE>
 DATE_OF_LOSS: <the date as spoken, or NONE>
 LOSS_TYPE: <one of water, fire, theft, wind, hail, vehicle, other, or NONE>
 DESCRIPTION: <one short clause describing what happened, or NONE>
-INJURED: <yes, no, or NONE>
+INJURED: <yes, no, or NONE; NONE unless the caller said so themselves>
 OFF_TOPIC: <yes if the caller is not reporting or discussing a loss at all, else no>
 
 Rules:
 - Carry forward a value already established; only change it if the caller corrects it.
 - NONE means the caller has not said it. Never invent a value, never guess a date.
-- INJURED is yes only if the caller said somebody was hurt, no only if they said nobody
-  was. NONE if it has not come up.
+- INJURED is yes only if the caller said somebody was hurt, and no only if the caller
+  said nobody was hurt. If injuries have not come up at all, INJURED is NONE. Most
+  callers do not mention injuries, so NONE is the common answer. Do not infer no from
+  silence, and do not infer no because the loss sounds minor or only damaged property.
+  Saying no when the caller never raised it is the one mistake that matters here: it
+  makes the agent skip the question and then assert something the caller never said.
 - Do not answer the caller. Do not decide coverage. Extract only.
 """
 
@@ -642,6 +658,17 @@ class ClaimsIntake:
         if fields.get("DESCRIPTION"):
             request.description = fields["DESCRIPTION"]
         injured = parse_injured(fields.get("INJURED"))
+        if injured is False and request.injured is None and not states_injury_outcome(text):
+            # The model answered "nobody was hurt" for a caller who never raised it. A
+            # real model does this readily: the loss sounds like property damage, so it
+            # fills in the reassuring answer. This is the one direction that does harm,
+            # because a false no is indistinguishable from an established no: it satisfies
+            # the field, skips the question, and the read back then tells the caller
+            # "Anyone injured: no" about something they never said. So an unstated no is
+            # discarded and the question gets asked. A yes is not second guessed: it only
+            # ever hands off to a person, which is the safe direction to be wrong in.
+            log.info("discarding unstated INJURED=no for %s", request.request_id)
+            injured = None
         if injured is not None:
             request.injured = injured
 
