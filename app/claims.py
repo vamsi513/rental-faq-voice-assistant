@@ -234,6 +234,35 @@ def is_injury(text: str) -> bool:
     return bool(_INJURY.search(body)) and not _NO_INJURY.search(body)
 
 
+# A bare answer to "was anyone injured?". Casual denials carry no injury wording of
+# their own, so they count only when the turn IS the answer and nothing else. "none" is
+# an injury denial; "none of the windows broke" is a property description, and reading
+# the second as a denial is exactly the mistake the guard exists to stop.
+_BARE_DENIAL = re.compile(
+    r"^(?:(?:thankfully|luckily|happily|fortunately|thank\s+god|oh|well|er+|um+)[,\s]+)*"
+    r"(?:no|nope|nah+|none|negative|nothing|not\s+at\s+all|neither)"
+    r"(?:[,\s]+(?:thankfully|luckily|happily|fortunately|thank\s+god|at\s+all))*"
+    r"[\s.!,]*$",
+    re.I,
+)
+
+# Somebody said a person came out of it unhurt. The subject has to be a person: "I'm
+# fine" is an answer about injuries and "the policy renewal is fine" is not, and the only
+# thing separating those two is what the adjective is attached to. So this matches a
+# person denoting subject bound to the reassuring word, never the word on its own.
+_PERSON_OK = re.compile(
+    r"\b(?:i'?m|i\s+am|we'?re|we\s+are|he'?s|he\s+is|she'?s|she\s+is|they'?re|they\s+are"
+    r"|everyone(?:'s|\s+is)?|everybody(?:'s|\s+is)?|no\s?one(?:'s|\s+is)?"
+    r"|nobody(?:'s|\s+is)?|all\s+of\s+us(?:\s+are)?"
+    r"|(?:my|his|her|their|the)\s+"
+    r"(?:wife|husband|partner|son|daughter|kids?|children|family|mum|mom|dad|father"
+    r"|mother|tenant|neighbour|neighbor|guest)s?(?:\s+(?:is|are|was|were))?)"
+    r"(?:\s+(?:all|both|still|totally|completely|perfectly|quite|absolutely))*"
+    r"\s+(?:ok|okay|alright|all\s+right|fine|unharmed|unhurt|uninjured|safe|well|good)\b",
+    re.I,
+)
+
+
 def states_injury_outcome(text: str) -> bool:
     """True when the caller themselves said something about whether anyone was hurt.
 
@@ -241,9 +270,26 @@ def states_injury_outcome(text: str) -> bool:
     is deciding whether an extracted INJURED value has any basis in what the caller
     actually said. Note it reads one turn of the caller's own words and never the
     transcript, because the agent's own "Was anyone injured?" would match.
+
+    Four ways a turn can count, and the last two are narrower than they look:
+
+    * it reports an injury, or denies one in so many words ("nobody was hurt");
+    * the whole turn is a casual denial ("nope", "nah", "thankfully no"), which is how
+      people actually answer this question out loud;
+    * somebody says a PERSON is unhurt. The subject has to denote a person, because
+      "I'm fine" answers the question and "the policy renewal is fine" does not. The
+      reassuring word alone separates nothing.
+
+    What must keep returning False is a turn that only describes property damage, since
+    letting one through is what lets an extracted no stand unsaid.
     """
     body = text or ""
-    return bool(_INJURY.search(body) or _NO_INJURY.search(body))
+    return bool(
+        _INJURY.search(body)
+        or _NO_INJURY.search(body)
+        or _BARE_DENIAL.match(body.strip())
+        or _PERSON_OK.search(body)
+    )
 
 
 def is_bypass_attempt(text: str) -> bool:

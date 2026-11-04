@@ -106,6 +106,70 @@ async def test_a_turn_that_says_nothing_about_injuries_is_not_a_statement(text):
     assert not states_injury_outcome(text)
 
 
+@pytest.mark.parametrize("text", [
+    "nope", "nah", "none", "negative", "not at all", "nobody got hurt", "no injuries",
+    "thankfully no", "everyone is okay", "we're ok", "I'm fine",
+    # How people answer out loud, with the filler they actually use.
+    "Nope.", "no, everyone's fine", "luckily no",
+    "she is okay", "the kids are fine", "my wife is unhurt",
+])
+async def test_a_casual_answer_to_the_injury_question_counts(text):
+    """Answering "was anyone injured?" with "nope" has to end the question.
+
+    Before this, states_injury_outcome read only explicit injury wording, so a caller who
+    said "nope" was asked again on every turn: the guard discarded the extracted no and
+    the flow asked for the same field.
+    """
+    assert states_injury_outcome(text)
+
+
+@pytest.mark.parametrize("text", [
+    "my bike was stolen from the garage",
+    "a pipe burst in the kitchen",
+    "October 30",
+    # The adjective is attached to a thing, not a person.
+    "the policy renewal is fine",
+    "the car is fine",
+    "the roof is fine",
+    "everything is fine",
+    "my family room is fine",
+    "none of the windows broke",
+    "nothing was damaged in the garage",
+])
+async def test_a_turn_about_property_alone_still_counts_for_nothing(text):
+    """The guard is only worth having while this list keeps returning False."""
+    assert not states_injury_outcome(text)
+
+
+async def test_a_person_being_fine_is_told_apart_from_a_thing_being_fine():
+    """The word "fine" separates nothing; the subject it attaches to does.
+
+    These two differ by what is fine, not by any keyword, which is why the pattern binds
+    a person denoting subject to the reassuring word instead of listing the word itself.
+    """
+    assert states_injury_outcome("the garage flooded but I'm fine")
+    assert not states_injury_outcome("the policy renewal is fine")
+
+
+async def test_a_casual_denial_counts_only_as_the_whole_turn():
+    """"none" is an answer; "none of the windows broke" is a description."""
+    assert states_injury_outcome("none")
+    assert not states_injury_outcome("none of the windows broke")
+
+
+@pytest.mark.parametrize("text", [
+    "nope, my wife was injured",
+    "nah but my son broke his arm",
+    "none of us are ok, I was burned",
+])
+async def test_a_casual_denial_word_does_not_suppress_a_reported_injury(text):
+    """The casual denials went in as their own pattern rather than by widening the
+    negation inside is_injury, which _NO_INJURY also serves. Widening that one would have
+    made "nope" cancel the injury reported right after it."""
+    assert is_injury(text)
+    assert states_injury_outcome(text)
+
+
 # --- the guard ----------------------------------------------------------------
 
 async def test_an_unstated_no_is_discarded_and_the_question_is_asked():
@@ -142,6 +206,30 @@ async def test_the_discarded_no_does_not_reach_the_read_back():
                   description="bike was stolen from the garage", injured="no"),
         ),
     )
+    assert request.injured is False
+    assert request.status == "awaiting_confirmation"
+    assert "Anyone injured: no" in outcomes[2].reply
+    assert not any(o.filed for o in outcomes)
+
+
+async def test_answering_the_injury_question_with_nope_moves_on():
+    """The bug this fixes: the flow asked, the caller answered, and it asked again."""
+    request, outcomes = await drive(
+        [THEFT_TURN, "October 30", "nope"],
+        canned(
+            reply(policy=POLICY, loss="theft", description="bike was stolen from the garage"),
+            reply(policy=POLICY, date="October 30", loss="theft",
+                  description="bike was stolen from the garage", injured="no"),
+            reply(policy=POLICY, date="October 30", loss="theft",
+                  description="bike was stolen from the garage", injured="no"),
+        ),
+    )
+    # Turn 2 is the guard doing its job: the caller had said nothing, so it asked.
+    assert outcomes[1].asked_for == "injured"
+    assert outcomes[1].reply == ASK_INJURED
+    # Turn 3 is the fix: "nope" is an answer, so it is not asked a third time.
+    assert outcomes[2].asked_for is None
+    assert outcomes[2].reply != ASK_INJURED
     assert request.injured is False
     assert request.status == "awaiting_confirmation"
     assert "Anyone injured: no" in outcomes[2].reply
